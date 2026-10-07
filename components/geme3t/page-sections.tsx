@@ -57,11 +57,11 @@ export function HomePage() {
               personal support—wherever you are starting from.
             </p>
             <div className="hero-actions">
-              <Link className="button" href="/courses">
-                Explore our courses <span aria-hidden="true">→</span>
+              <Link className="button" href="/apply">
+                Apply for a scholarship <span aria-hidden="true">→</span>
               </Link>
-              <Link className="button button--light" href="/about-us">
-                Get to know us
+              <Link className="button button--light" href="/courses">
+                Explore our courses
               </Link>
             </div>
             <div className="hero-note">
