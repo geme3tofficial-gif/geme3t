@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import { MobileSiteNav } from "./mobile-site-nav";
 
 const links = [
   { href: "/courses", label: "Courses" },
@@ -44,17 +45,7 @@ export function SiteHeader() {
             Student portal
           </Link>
         </nav>
-        <details className="mobile-nav">
-          <summary aria-label="Open navigation menu">☰</summary>
-          <nav aria-label="Mobile navigation" className="mobile-nav-items">
-            {links.map((link) => (
-              <Link href={link.href} key={link.href}>
-                {link.label}
-              </Link>
-            ))}
-            <Link href="/dashboard">Student portal</Link>
-          </nav>
-        </details>
+        <MobileSiteNav />
       </div>
     </header>
   );

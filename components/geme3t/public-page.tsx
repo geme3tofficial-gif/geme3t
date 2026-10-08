@@ -353,7 +353,7 @@ function ContactPage() {
                 <strong>Email</strong>
                 <span>
                   <a href="mailto:support@tsacademyonline.com">
-                    support@tsacademyonline.com
+                    support@geme3t.vercel.app
                   </a>
                 </span>
               </div>
@@ -374,7 +374,7 @@ function ContactPage() {
               </div>
             </div>
           </div>
-          <form className="contact-form" action="mailto:support@tsacademyonline.com" method="post" encType="text/plain">
+          <form className="contact-form" action="mailto:support@geme3t.vercel.app" method="post" encType="text/plain">
             <label>
               Your name
               <input autoComplete="name" name="name" required />
@@ -682,7 +682,7 @@ const termsSections: LegalSection[] = [
   {
     title: "13. Contact Us",
     paragraphs: [
-      "For questions or concerns regarding these Terms, please contact us at support@tsacademyonline.com or visit tsacademyonline.com.",
+      "For questions or concerns regarding these Terms, please contact us at support@geme3t.vercel.app or visit geme3t.vercel.app.",
       "Our mission at GEME3T Academy is to equip Africans with the skills and confidence to thrive in the booming technology and digital industries.",
     ],
   },
@@ -710,7 +710,7 @@ function LegalPage({
               your privacy and are committed to protecting your personal
               information. This Privacy Policy explains how we collect, use,
               disclose, and safeguard your information when you visit our
-              website https://tsacademyonline.com, including related
+              website https://geme3t.vercel.app, including related
               platforms, applications, or services. Please read this policy
               carefully. By using our website or services, you consent to it.
             </p>

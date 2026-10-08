@@ -50,14 +50,14 @@ export function HomePage({ courses }: { courses: Course[] }) {
           <div className="hero-copy">
             <span className="eyebrow">We make you career and future ready.</span>
             <h1>
-             Training and Transforming the next generation   <span>modern tech users</span>
+             Training and Transforming the next generation   <span>tech users</span>
             </h1>
             <p>
               Build practical, in-demand skills with flexible learning and
               personal support—wherever you are starting from.
             </p>
             <div className="hero-actions">
-              <Link className="button" href="/apply">
+              <Link className="button button--pulse" href="/apply">
                 Join Campus Tech Bootcamp <span aria-hidden="true">→</span>
               </Link>
               <Link className="button button--light" href="/courses">

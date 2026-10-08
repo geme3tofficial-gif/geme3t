@@ -3,7 +3,7 @@ import { AppToaster } from "@/components/app-toaster";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://tsacademyonline.com"),
+  metadataBase: new URL("https://geme3t.vercel.app"),
   title: {
     default: "GEME3T Academy | Learn skills. Earn opportunities.",
     template: "%s | GEME3T Academy",
