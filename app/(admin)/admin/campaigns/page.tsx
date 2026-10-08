@@ -3,7 +3,7 @@ import { PromoCampaignForm } from "@/components/geme3t/promo-campaign-form";
 
 export const metadata: Metadata = {
   title: "Promo campaigns",
-  description: "Create and preview GEME3T Academy course discount campaigns.",
+  description: "Manage GEME3T Academy course discount campaigns.",
 };
 
 export default function PromoCampaignsPage() {
@@ -13,7 +13,7 @@ export default function PromoCampaignsPage() {
         <div>
           <span className="eyebrow">Admin tools · promotions</span>
           <h1>Promo campaigns</h1>
-          <p>Create a course discount code and schedule your promotion.</p>
+          <p>Manage course discount codes and campaign schedules.</p>
         </div>
       </div>
       <PromoCampaignForm />

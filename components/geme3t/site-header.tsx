@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 
 const links = [
@@ -14,11 +15,15 @@ export function Brand() {
       className="brand-link"
       href="/"
     >
-      <span aria-hidden="true" className="brand-mark">
-        G
-      </span>
+      <Image
+        alt="GEME3T"
+        className="brand-logo"
+        height={408}
+        src="/images/logo-no-bg.png"
+        width={612}
+      />
       <span className="brand-name">
-        GEME3T <span>Academy</span>
+        <span>Academy</span>
       </span>
     </Link>
   );

@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import { ScholarshipApplication } from "@/components/geme3t/scholarship-application";
 
 export const metadata: Metadata = {
-  title: "Apply for a 2026 Tech Scholarship",
+  title: "GEME3T free tech bootcamp",
   description:
-    "Apply for a 2026 GEME3T tech scholarship and take your next step towards a job-ready digital career.",
+    "Apply for the GEME3T free tech bootcamp and be part of the generation that is transforming tomorrow .",
 };
 
 export default function ApplyPage() {

@@ -10,39 +10,44 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
+import { submitScholarshipApplication } from "@/app/(geme3t)/apply/actions";
 
 const scholarships = [
   {
-    label: "Aproko Nation",
-    value: "Aproko Nation Tech Scholarship 2026 (up to 100%)",
+    label: "DOU BLOG TV",
+    value: "DOU BLOG TV Tech Scholarship FOR 100 STUDENTS",
   },
   {
-    label: "The Asherkine",
-    value: "The Asherkine Tech Scholarship 2026 (up to 100%)",
+    label: "NACOS DOU CHAPTER",
+    value: "NACOS DOU CHAPTER Tech Scholarship FOR 100 STUDENTS",
   },
   {
-    label: "Sir Dickson & Friends",
-    value: "Sir Dickson & Friends Tech Scholarship 2026 (up to 100%)",
+    label: "INGATHERING DOU CHAPTER",
+    value: "INGATHERING DOU CHAPTER Tech Scholarship FOR 100 STUDENTS",
   },
   {
-    label: "Enioluwa",
-    value: "Enioluwa Tech Scholarship 2026 (up to 100%)",
+    label: "RCCG DOU CHAPTER",
+    value: "RCCG DOU CHAPTER Tech Scholarship FOR 100 STUDENTS",
   },
   {
-    label: "GEME3T",
-    value: "GEME3T Scholarship 2026 (up to 100%)",
+    label: "DSPG BLOG ",
+    value: "GEME3T Scholarship FOR 100 STUDENTS",
   },
+  {
+    label: "CGMI ASABA",
+    value: "CGMI ASABA Scholarship FOR 100 STUDENTS",
+  }
 ];
 
 const courses = [
-  "AI & Automation",
-  "Cybersecurity",
+  "AI Automation",
+  "Ethical Hacking",
   "Data Analytics",
   "Cloud Computing",
-  "Product Design (UI & UX)",
+  "Product Design (UI / UX)",
   "Digital Marketing",
   "Product Management",
-  "Becoming an Influencer (Content Creation)",
+  "Content Creation",
   "Graphics Design",
   "Software Development",
   "Virtual Assistant",
@@ -57,28 +62,30 @@ const courses = [
 
 const learningModes = [
   { label: "Online", value: "Online" },
-  { label: "In-person", value: "Physical (In-person)" },
-  { label: "Hybrid", value: "Hybrid (Mix of online & physical)" },
+  { label: "on-site", value: "Physical (on-site)" },
+  { label: "Hybrid", value: "Hybrid (both online & physical)" },
 ];
 
 const startDates = [
   "October 31, 2026",
   "February 28, 2027",
   "March 30, 2027",
+  "June 30, 2027",
+  "july 31, 2027",
 ];
 
 const experienceOptions = [
   {
-    label: "I’m completely new",
-    value: "No, I’m completely new to tech",
+    label: "Completely new to tech",
+    value: "New to tech",
   },
   {
-    label: "I know a little",
-    value: "A little, but I want to deepen my knowledge",
+    label: "I have used a computer and some software",
+    value: "Not new to tech",
   },
   {
-    label: "I have experience",
-    value: "Yes, I already have some experience",
+    label: "I'm comfortable with tech",
+    value: "Experienced in tech",
   },
 ];
 
@@ -197,21 +204,21 @@ function makeQuestions(answers: Answers): Question[] {
       key: "scholarshipInterest",
       title: "Choose your support",
       prompt: "Would you like to apply for a scholarship?",
-      hint: "Up to 100% off tuition.",
+      hint: "Up to 100% off .",
       kind: "choice",
       options: [
-        "Yes, I’d like to apply for a scholarship",
-        "No, I’ll self-fund my tuition",
+        "I'm here for the free tech bootcamp",
+        "I want to self-fund my tuition",
       ],
     },
   ];
 
-  if (answers.scholarshipInterest === "Yes, I’d like to apply for a scholarship") {
+  if (answers.scholarshipInterest === "I'm here for the free tech bootcamp") {
     questions.push({
       key: "scholarship",
       title: "Choose your support",
       prompt: "Pick a scholarship",
-      hint: "Each award offers up to 100% tuition support.",
+      hint: "Scroll to see all scholarships. Only one scholarship can be selected.",
       kind: "choice",
       options: scholarships,
     });
@@ -256,14 +263,14 @@ function makeQuestions(answers: Answers): Question[] {
     {
       key: "gender",
       title: "A little about you",
-      prompt: "How do you identify?",
+      prompt: "What is your gender?",
       kind: "choice",
       options: ["Female", "Male", "Prefer not to say"],
     },
     {
       key: "country",
       title: "A little about you",
-      prompt: "Where are you based?",
+      prompt: "Where are you located?",
       kind: "choice",
       options: ["Nigeria", "UK", "United States", "Ghana", "Kenya", "Canada", "Other"],
       columns: 2,
@@ -286,7 +293,7 @@ function makeQuestions(answers: Answers): Question[] {
       key: "location",
       title: "A little about you",
       prompt: "What state or city?",
-      hint: "If you’re outside Nigeria, enter your city.",
+      hint: "If you’re outside Nigeria, enter your city name.",
       kind: "text",
       autoComplete: "address-level1",
       maxLength: 120,
@@ -297,7 +304,7 @@ function makeQuestions(answers: Answers): Question[] {
       prompt: "What best describes you today?",
       kind: "choice",
       options: [
-        "Student",
+        "undergraduate",
         "Graduate",
         "NYSC Corper",
         "Working Professional (Employed)",
@@ -318,7 +325,7 @@ function makeQuestions(answers: Answers): Question[] {
         "HND",
         "Diploma",
         "OND",
-        "Mphil / PhD",
+        "PhD",
         "NCE",
         "Other",
       ],
@@ -382,6 +389,11 @@ export function ScholarshipApplication() {
   const [dragging, setDragging] = useState(false);
   const [autoAdvancing, setAutoAdvancing] = useState(false);
   const [answers, setAnswers] = useState<Answers>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submissionStatus, setSubmissionStatus] = useState<{
+    success: boolean;
+    message: string;
+  } | null>(null);
   const activePanelRef = useRef<HTMLDivElement>(null);
   const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
   const suppressClickRef = useRef(false);
@@ -564,35 +576,16 @@ export function ScholarshipApplication() {
     setDragging(false);
   }
 
-  function openApplicationEmail() {
-    const body = [
-      "2026 Tech Scholarship Application",
-      "",
-      `Scholarship interest: ${answers.scholarshipInterest}`,
-      `Selected scholarship: ${answers.scholarship || "Self-funded"}`,
-      "",
-      `First name: ${answers.firstName}`,
-      `Last name: ${answers.lastName}`,
-      `Email address: ${answers.email}`,
-      `Phone number: ${answers.phone}`,
-      `Gender: ${answers.gender}`,
-      `Country: ${answers.country === "Other" ? answers.otherCountry : answers.country}`,
-      `State/City: ${answers.location}`,
-      `Current employment/study status: ${answers.status}`,
-      `Educational level: ${answers.education}`,
-      "",
-      `Course: ${answers.course}`,
-      `Preferred mode of learning: ${answers.learningMode}`,
-      `Preferred start date: ${answers.startDate}`,
-      `Prior tech experience: ${answers.experience}`,
-      `Job placement support: ${answers.jobSupport}`,
-      "",
-      "Terms and Conditions: Accepted",
-    ].join("\n");
-    const subject = `2026 Tech Scholarship Application — ${answers.firstName} ${answers.lastName}`;
-    window.location.assign(
-      `mailto:geme3tofficial@gmail.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`,
-    );
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!isLastStep || !validateActiveStep()) return;
+
+    setIsSubmitting(true);
+    try {
+      setSubmissionStatus(await submitScholarshipApplication(answers));
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   const selectedCountry =
@@ -689,12 +682,7 @@ export function ScholarshipApplication() {
 
               <form
                 className="application-form"
-                onSubmit={(event: FormEvent<HTMLFormElement>) => {
-                  event.preventDefault();
-                  if (isLastStep && validateActiveStep()) {
-                    openApplicationEmail();
-                  }
-                }}
+                onSubmit={handleSubmit}
               >
                 <div
                   aria-live="polite"
@@ -848,16 +836,26 @@ export function ScholarshipApplication() {
                         </span>
                       </label>
                       <p className="application-email-note">
-                        Opens a pre-filled email to geme3tofficial@gmail.com.
-                        You’ll send it from your email app.
+                        Your application will be saved securely for the GEME3T team to review.
                       </p>
+                      {submissionStatus && (
+                        <p
+                          aria-live="polite"
+                          className={`application-email-note${submissionStatus.success ? " application-email-note--success" : " application-email-note--error"}`}
+                          role="status"
+                        >
+                          {submissionStatus.message}
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>
 
                 <div className="application-form-footer">
                   <span className="application-required-note">
-                    {isLastStep
+                    {submissionStatus?.success
+                      ? "Application submitted"
+                      : isLastStep
                       ? "Review your answers to finish"
                       : "Complete this step to continue"}
                   </span>
@@ -883,8 +881,16 @@ export function ScholarshipApplication() {
                     </button>
                   </nav>
                   {isLastStep ? (
-                    <button className="button application-submit" type="submit">
-                      Open email draft <span aria-hidden="true">↗</span>
+                    <button
+                      className="button application-submit"
+                      disabled={isSubmitting || submissionStatus?.success}
+                      type="submit"
+                    >
+                      {isSubmitting
+                        ? "Submitting…"
+                        : submissionStatus?.success
+                          ? "Application submitted"
+                          : "Submit application"}
                     </button>
                   ) : (
                     <span aria-hidden="true" className="application-swipe-direction">←</span>
@@ -895,7 +901,7 @@ export function ScholarshipApplication() {
           </div>
         </div>
         <p className="application-security-note">
-          Your details stay on this page until you choose to open your email app.
+          Your application details are sent securely to GEME3T when you submit.
         </p>
       </div>
     </section>

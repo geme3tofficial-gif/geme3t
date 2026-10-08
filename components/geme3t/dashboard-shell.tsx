@@ -7,11 +7,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
       <DashboardNavigation role="Student" />
       <div className="student-main">
         <header className="student-topbar">
-          <span className="student-topbar-label">Preview student dashboard</span>
-          <div className="student-user">
-            <span className="avatar" aria-hidden="true">JD</span>
-            <strong>Jordan</strong>
-          </div>
+          <span className="student-topbar-label">Student workspace</span>
         </header>
         <main>{children}</main>
       </div>

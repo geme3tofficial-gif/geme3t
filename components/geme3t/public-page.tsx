@@ -436,17 +436,9 @@ function LearningPlatformPage() {
             <span className="feature-icon" aria-hidden="true">▥</span>
             <h3>GEME3T Academy team</h3>
             <p>
-              Preview the administration tools and teaching workspace. These
-              are sample dashboards and are not connected to live accounts.
+              Staff workspaces will be available after secure account sign-in
+              and database setup are complete.
             </p>
-            <div className="workspace-resource-links">
-              <Link className="text-link" href="/admin">
-                Admin dashboard preview <span aria-hidden="true">→</span>
-              </Link>
-              <Link className="text-link" href="/teacher">
-                Teacher dashboard preview <span aria-hidden="true">→</span>
-              </Link>
-            </div>
           </article>
         </div>
         <div className="page-content" style={{ margin: "44px auto 0" }}>

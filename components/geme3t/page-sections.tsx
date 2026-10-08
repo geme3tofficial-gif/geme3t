@@ -94,13 +94,7 @@ export function HomePage() {
         </div>
       </section>
       <div className="trust-strip">
-        <span>Training recognised by our global partner</span>
-        <Image
-          alt="American Council of Training and Development"
-          height={300}
-          src="/frontend/wp-content/uploads/2025/12/ACTD-2.png"
-          width={300}
-        />
+        <span>Powered by D&apos;N&apos;T Innovations</span>
       </div>
       <section className="section container">
         <SectionHeading

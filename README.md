@@ -1,36 +1,34 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# GEME3T
 
-## Getting Started
+GEME3T is a Next.js application using Supabase Auth and Prisma with Supabase
+Postgres.
 
-First, run the development server:
+## Local setup
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+1. Create a Supabase project.
+2. Copy `.env.example` to `.env` and fill in the project URL, publishable
+   (or anon) key, pooled database URL, and direct database URL. Never commit
+   `.env.local` or expose database credentials in browser code.
+3. Install dependencies with `npm install`. The postinstall script generates the
+   Prisma client.
+4. Apply the checked-in schema and Auth trigger migrations to your development
+   database with `npm run db:migrate`.
+5. Start the app with `npm run dev`.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+`DATABASE_URL` should use Supabase's transaction pooler for the application.
+`DIRECT_URL` should use the direct database connection for Prisma migrations.
+The schema defines profiles and roles, courses and scholarships, applications,
+cohorts and teaching assignments, enrollments, modules and lessons, learner
+progress, live sessions, and promotions. It intentionally has no seed script or
+fabricated learner, teacher, course-progress, schedule, or campaign records.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Prisma is intended for server-side use only. Check Supabase Auth and the
+`user_profiles.role` on the server before adding database reads or writes to
+protected workspace routes. Row-level security is enabled on every application
+table; no public Supabase Data API policies are created. The Auth trigger always
+creates a `STUDENT` profile and ignores role values in user metadata.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+The public scholarship application is saved to `scholarship_applications` by a
+server action after the applicant accepts the terms. Submissions are unavailable
+until Supabase is configured and the migrations have been applied; the form
+reports that state rather than creating a local or email-only submission.

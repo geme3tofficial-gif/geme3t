@@ -1,0 +1,346 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum UserRole {
+  STUDENT
+  TEACHER
+  ADMIN
+}
+
+enum CourseStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum ScholarshipStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum ApplicationStatus {
+  SUBMITTED
+  UNDER_REVIEW
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
+}
+
+enum LearningMode {
+  ONLINE
+  ONSITE
+  HYBRID
+}
+
+enum EnrollmentStatus {
+  PENDING
+  ACTIVE
+  COMPLETED
+  WITHDRAWN
+}
+
+enum CohortStatus {
+  PLANNED
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum LessonKind {
+  VIDEO
+  ARTICLE
+  QUIZ
+  ASSIGNMENT
+  LIVE
+}
+
+enum LessonProgressStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum SessionStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  ACTIVE
+  PAUSED
+  ENDED
+}
+
+model UserProfile {
+  id        String   @id @db.Uuid
+  email     String?  @unique
+  firstName String   @default("") @map("first_name")
+  lastName  String   @default("") @map("last_name")
+  phone     String?
+  avatarUrl String?  @map("avatar_url")
+  role      UserRole @default(STUDENT)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  applications        ScholarshipApplication[]   @relation("Applicant")
+  enrollments         Enrollment[]
+  teachingAssignments CohortTeachingAssignment[]
+  teachingSessions    LiveSession[]
+  createdCampaigns    PromoCampaign[]            @relation("CampaignCreator")
+  promoRedemptions    PromoRedemption[]
+
+  @@map("user_profiles")
+}
+
+model Course {
+  id            String       @id @default(uuid()) @db.Uuid
+  slug          String       @unique
+  title         String
+  category      String
+  description   String       @db.Text
+  imageUrl      String?      @map("image_url")
+  durationWeeks Int          @map("duration_weeks")
+  status        CourseStatus @default(DRAFT)
+  publishedAt   DateTime?    @map("published_at") @db.Timestamptz(6)
+  createdAt     DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  applications ScholarshipApplication[]
+  cohorts      Cohort[]
+  modules      CourseModule[]
+  enrollments  Enrollment[]
+  campaigns    PromoCampaign[]
+
+  @@index([status, category])
+  @@map("courses")
+}
+
+model Scholarship {
+  id             String            @id @default(uuid()) @db.Uuid
+  name           String            @unique
+  sponsor        String?
+  description    String?           @db.Text
+  tuitionPercent Int?              @map("tuition_percent")
+  amount         Decimal?          @db.Decimal(12, 2)
+  currency       String            @default("NGN")
+  status         ScholarshipStatus @default(ACTIVE)
+  createdAt      DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  applications ScholarshipApplication[]
+
+  @@map("scholarships")
+}
+
+model ScholarshipApplication {
+  id                  String            @id @default(uuid()) @db.Uuid
+  applicantId         String?           @map("applicant_id") @db.Uuid
+  applicant           UserProfile?      @relation("Applicant", fields: [applicantId], references: [id], onDelete: SetNull)
+  firstName           String            @map("first_name")
+  lastName            String            @map("last_name")
+  email               String
+  phone               String
+  gender              String
+  country             String
+  otherCountry        String?           @map("other_country")
+  location            String
+  employmentStatus    String            @map("employment_status")
+  educationLevel      String            @map("education_level")
+  scholarshipInterest Boolean           @map("scholarship_interest")
+  scholarshipId       String?           @map("scholarship_id") @db.Uuid
+  scholarship         Scholarship?      @relation(fields: [scholarshipId], references: [id], onDelete: SetNull)
+  scholarshipName     String?           @map("scholarship_name")
+  courseId            String?           @map("course_id") @db.Uuid
+  course              Course?           @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  courseName          String            @map("course_name")
+  learningMode        LearningMode      @map("learning_mode")
+  preferredStartDate  DateTime?         @map("preferred_start_date") @db.Date
+  techExperience      String            @map("tech_experience")
+  jobPlacementSupport Boolean           @map("job_placement_support")
+  termsAcceptedAt     DateTime          @map("terms_accepted_at") @db.Timestamptz(6)
+  status              ApplicationStatus @default(SUBMITTED)
+  submittedAt         DateTime          @default(now()) @map("submitted_at") @db.Timestamptz(6)
+  createdAt           DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  enrollment Enrollment?
+
+  @@index([status, submittedAt])
+  @@index([email])
+  @@map("scholarship_applications")
+}
+
+model Cohort {
+  id        String       @id @default(uuid()) @db.Uuid
+  courseId  String       @map("course_id") @db.Uuid
+  course    Course       @relation(fields: [courseId], references: [id], onDelete: Restrict)
+  name      String
+  startsAt  DateTime     @map("starts_at") @db.Timestamptz(6)
+  endsAt    DateTime?    @map("ends_at") @db.Timestamptz(6)
+  status    CohortStatus @default(PLANNED)
+  createdAt DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  enrollments Enrollment[]
+  teachers    CohortTeachingAssignment[]
+  sessions    LiveSession[]
+
+  @@unique([courseId, name])
+  @@index([status, startsAt])
+  @@map("cohorts")
+}
+
+model CohortTeachingAssignment {
+  cohortId   String      @map("cohort_id") @db.Uuid
+  teacherId  String      @map("teacher_id") @db.Uuid
+  assignedAt DateTime    @default(now()) @map("assigned_at") @db.Timestamptz(6)
+  cohort     Cohort      @relation(fields: [cohortId], references: [id], onDelete: Cascade)
+  teacher    UserProfile @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  @@id([cohortId, teacherId])
+  @@index([teacherId])
+  @@map("cohort_teaching_assignments")
+}
+
+model Enrollment {
+  id            String                  @id @default(uuid()) @db.Uuid
+  learnerId     String                  @map("learner_id") @db.Uuid
+  learner       UserProfile             @relation(fields: [learnerId], references: [id], onDelete: Cascade)
+  courseId      String                  @map("course_id") @db.Uuid
+  course        Course                  @relation(fields: [courseId], references: [id], onDelete: Restrict)
+  cohortId      String?                 @map("cohort_id") @db.Uuid
+  cohort        Cohort?                 @relation(fields: [cohortId], references: [id], onDelete: SetNull)
+  applicationId String?                 @unique @map("application_id") @db.Uuid
+  application   ScholarshipApplication? @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+  status        EnrollmentStatus        @default(PENDING)
+  enrolledAt    DateTime                @default(now()) @map("enrolled_at") @db.Timestamptz(6)
+  completedAt   DateTime?               @map("completed_at") @db.Timestamptz(6)
+  createdAt     DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime                @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  lessonProgress LessonProgress[]
+
+  @@index([learnerId, status])
+  @@index([cohortId, status])
+  @@map("enrollments")
+}
+
+model CourseModule {
+  id          String   @id @default(uuid()) @db.Uuid
+  courseId    String   @map("course_id") @db.Uuid
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title       String
+  description String?  @db.Text
+  sortOrder   Int      @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  lessons Lesson[]
+
+  @@unique([courseId, sortOrder])
+  @@map("course_modules")
+}
+
+model Lesson {
+  id              String       @id @default(uuid()) @db.Uuid
+  moduleId        String       @map("module_id") @db.Uuid
+  module          CourseModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  title           String
+  description     String?      @db.Text
+  kind            LessonKind   @default(ARTICLE)
+  contentUrl      String?      @map("content_url")
+  durationMinutes Int?         @map("duration_minutes")
+  sortOrder       Int          @map("sort_order")
+  isPublished     Boolean      @default(false) @map("is_published")
+  createdAt       DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  progress LessonProgress[]
+
+  @@unique([moduleId, sortOrder])
+  @@map("lessons")
+}
+
+model LessonProgress {
+  id             String               @id @default(uuid()) @db.Uuid
+  enrollmentId   String               @map("enrollment_id") @db.Uuid
+  enrollment     Enrollment           @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  lessonId       String               @map("lesson_id") @db.Uuid
+  lesson         Lesson               @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  status         LessonProgressStatus @default(NOT_STARTED)
+  startedAt      DateTime?            @map("started_at") @db.Timestamptz(6)
+  completedAt    DateTime?            @map("completed_at") @db.Timestamptz(6)
+  lastAccessedAt DateTime?            @map("last_accessed_at") @db.Timestamptz(6)
+
+  @@unique([enrollmentId, lessonId])
+  @@index([enrollmentId, status])
+  @@map("lesson_progress")
+}
+
+model LiveSession {
+  id          String        @id @default(uuid()) @db.Uuid
+  cohortId    String        @map("cohort_id") @db.Uuid
+  cohort      Cohort        @relation(fields: [cohortId], references: [id], onDelete: Cascade)
+  teacherId   String?       @map("teacher_id") @db.Uuid
+  teacher     UserProfile?  @relation(fields: [teacherId], references: [id], onDelete: SetNull)
+  title       String
+  description String?       @db.Text
+  startsAt    DateTime      @map("starts_at") @db.Timestamptz(6)
+  endsAt      DateTime      @map("ends_at") @db.Timestamptz(6)
+  location    String?
+  meetingUrl  String?       @map("meeting_url")
+  status      SessionStatus @default(SCHEDULED)
+  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([cohortId, startsAt])
+  @@index([teacherId, startsAt])
+  @@map("live_sessions")
+}
+
+model PromoCampaign {
+  id              String         @id @default(uuid()) @db.Uuid
+  createdById     String         @map("created_by_id") @db.Uuid
+  createdBy       UserProfile    @relation("CampaignCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  courseId        String?        @map("course_id") @db.Uuid
+  course          Course?        @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  name            String
+  code            String         @unique
+  discountPercent Int            @map("discount_percent")
+  startsAt        DateTime       @map("starts_at") @db.Timestamptz(6)
+  endsAt          DateTime       @map("ends_at") @db.Timestamptz(6)
+  redemptionLimit Int?           @map("redemption_limit")
+  status          CampaignStatus @default(DRAFT)
+  createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  redemptions PromoRedemption[]
+
+  @@index([status, startsAt, endsAt])
+  @@map("promo_campaigns")
+}
+
+model PromoRedemption {
+  id         String        @id @default(uuid()) @db.Uuid
+  campaignId String        @map("campaign_id") @db.Uuid
+  campaign   PromoCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  learnerId  String?       @map("learner_id") @db.Uuid
+  learner    UserProfile?  @relation(fields: [learnerId], references: [id], onDelete: SetNull)
+  email      String?
+  redeemedAt DateTime      @default(now()) @map("redeemed_at") @db.Timestamptz(6)
+
+  @@unique([campaignId, learnerId])
+  @@index([campaignId, redeemedAt])
+  @@map("promo_redemptions")
+}
