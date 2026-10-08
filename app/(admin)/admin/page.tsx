@@ -10,12 +10,13 @@ export const metadata: Metadata = {
 
 export default async function AdminDashboardPage() {
   await requireAdmin();
-  const [courseCount, scholarshipCount, applicationCount] = await Promise.all([
-    getPrismaClient().course.count(),
-    getPrismaClient().scholarship.count({
+  const prisma = getPrismaClient();
+  const [courseCount, scholarshipCount, applicationCount] = await prisma.$transaction([
+    prisma.course.count(),
+    prisma.scholarship.count({
       where: { status: ScholarshipStatus.ACTIVE },
     }),
-    getPrismaClient().scholarshipApplication.count({
+    prisma.scholarshipApplication.count({
       where: { status: ApplicationStatus.SUBMITTED },
     }),
   ]);

@@ -23,8 +23,23 @@ export async function createSupabaseServerClient() {
           return cookieStore.getAll();
         },
         setAll(cookiesToSet) {
-          for (const { name, value, options } of cookiesToSet) {
-            cookieStore.set(name, value, options);
+          try {
+            for (const { name, value, options } of cookiesToSet) {
+              cookieStore.set(name, value, options);
+            }
+          } catch (error) {
+            if (
+              error instanceof Error &&
+              error.message.includes(
+                "Cookies can only be modified in a Server Action or Route Handler",
+              )
+            ) {
+              console.warn(
+                "Supabase tried to refresh cookies during Server Component rendering; the request proxy is responsible for refreshing the session.",
+              );
+              return;
+            }
+            throw error;
           }
         },
       },

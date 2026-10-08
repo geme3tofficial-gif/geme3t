@@ -15,8 +15,13 @@ export function getPrismaClient() {
   }
 
   if (!globalForPrisma.prisma) {
+    const runtimeDatabaseUrl = new URL(databaseUrl);
+    if (!runtimeDatabaseUrl.searchParams.has("pool_timeout")) {
+      runtimeDatabaseUrl.searchParams.set("pool_timeout", "20");
+    }
+
     globalForPrisma.prisma = new PrismaClient({
-      datasources: { db: { url: databaseUrl } },
+      datasources: { db: { url: runtimeDatabaseUrl.toString() } },
     });
   }
 

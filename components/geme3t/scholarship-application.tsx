@@ -12,6 +12,7 @@ import {
 } from "react";
 import { submitScholarshipApplication } from "@/app/(geme3t)/apply/actions";
 import { normalizeWhatsAppNumber } from "@/lib/phone";
+import { toast } from "sonner";
 
 const learningModes = [
   { label: "Online", value: "Online" },
@@ -606,7 +607,22 @@ export function ScholarshipApplication({
 
     setIsSubmitting(true);
     try {
-      setSubmissionStatus(await submitScholarshipApplication(answers));
+      const result = await submitScholarshipApplication(answers);
+      setSubmissionStatus(result);
+      if (result.success) {
+        toast.success(result.message, { id: "application-submit" });
+      } else {
+        toast.error(result.message, { id: "application-submit" });
+      }
+    } catch (error) {
+      console.error("Application submission failed unexpectedly.", error);
+      const result = {
+        success: false,
+        message:
+          "Your application could not be submitted right now. Please try again.",
+      };
+      setSubmissionStatus(result);
+      toast.error(result.message, { id: "application-submit" });
     } finally {
       setIsSubmitting(false);
     }
