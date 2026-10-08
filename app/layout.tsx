@@ -25,6 +25,18 @@ export const metadata: Metadata = {
       },
     ],
   },
+  twitter: {
+    card: "summary_large_image",
+    title: "GEME3T Academy | Learn skills. Earn opportunities.",
+    description:
+      "Build practical, in-demand skills with GEME3T Academy's flexible, beginner-friendly courses and expert mentorship.",
+    images: [
+      {
+        url: "/images/banner.png",
+        alt: "GEME3T Academy banner",
+      },
+    ],
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

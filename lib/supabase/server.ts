@@ -2,21 +2,21 @@ import "server-only";
 
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
-
-function requiredEnvironmentVariable(name: string) {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`${name} is required to use Supabase Auth.`);
-  }
-  return value;
-}
+import { getSupabasePublicConfig } from "./config";
 
 export async function createSupabaseServerClient() {
+  const config = getSupabasePublicConfig();
+  if (!config) {
+    throw new Error(
+      "Set NEXT_PUBLIC_SUPABASE_URL and either NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY or NEXT_PUBLIC_SUPABASE_ANON_KEY to use Supabase Auth.",
+    );
+  }
+
   const cookieStore = await cookies();
 
   return createServerClient(
-    requiredEnvironmentVariable("NEXT_PUBLIC_SUPABASE_URL"),
-    requiredEnvironmentVariable("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
+    config.url,
+    config.key,
     {
       cookies: {
         getAll() {

@@ -11,67 +11,13 @@ import {
   type ReactNode,
 } from "react";
 import { submitScholarshipApplication } from "@/app/(geme3t)/apply/actions";
-
-const scholarships = [
-  {
-    label: "DOU BLOG TV",
-    value: "DOU BLOG TV Tech Scholarship FOR 100 STUDENTS",
-  },
-  {
-    label: "NACOS DOU CHAPTER",
-    value: "NACOS DOU CHAPTER Tech Scholarship FOR 100 STUDENTS",
-  },
-  {
-    label: "INGATHERING DOU CHAPTER",
-    value: "INGATHERING DOU CHAPTER Tech Scholarship FOR 100 STUDENTS",
-  },
-  {
-    label: "RCCG DOU CHAPTER",
-    value: "RCCG DOU CHAPTER Tech Scholarship FOR 100 STUDENTS",
-  },
-  {
-    label: "DSPG BLOG ",
-    value: "GEME3T Scholarship FOR 100 STUDENTS",
-  },
-  {
-    label: "CGMI ASABA",
-    value: "CGMI ASABA Scholarship FOR 100 STUDENTS",
-  }
-];
-
-const courses = [
-  "AI Automation",
-  "Ethical Hacking",
-  "Data Analytics",
-  "Cloud Computing",
-  "Product Design (UI / UX)",
-  "Digital Marketing",
-  "Product Management",
-  "Content Creation",
-  "Graphics Design",
-  "Software Development",
-  "Virtual Assistant",
-  "DevOps Engineering",
-  "Social Media Marketing",
-  "Frontend Development",
-  "Backend Development",
-  "Data Science",
-  "Project Management",
-  "Product Marketing",
-];
+import { normalizeWhatsAppNumber } from "@/lib/phone";
 
 const learningModes = [
   { label: "Online", value: "Online" },
-  { label: "on-site", value: "Physical (on-site)" },
+  { label: "physical (on-site with other students)", value: "Physical (on-site)" },
+  { label: "physical (privately)", value: "Physical (private)" },
   { label: "Hybrid", value: "Hybrid (both online & physical)" },
-];
-
-const startDates = [
-  "October 31, 2026",
-  "February 28, 2027",
-  "March 30, 2027",
-  "June 30, 2027",
-  "july 31, 2027",
 ];
 
 const experienceOptions = [
@@ -90,6 +36,12 @@ const experienceOptions = [
 ];
 
 type Answers = Record<string, string>;
+type ScholarshipOption = { label: string; value: string };
+type CohortOption = {
+  value: string;
+  label: string;
+  courseTitle: string;
+};
 type ChoiceOption = string | { label: string; value: string };
 type QuestionBase = {
   key: string;
@@ -198,29 +150,34 @@ function TextQuestionField({
   );
 }
 
-function makeQuestions(answers: Answers): Question[] {
+function makeQuestions(
+  answers: Answers,
+  courseOptions: string[],
+  scholarshipOptions: ScholarshipOption[],
+  cohortOptions: CohortOption[],
+): Question[] {
   const questions: Question[] = [
     {
-      key: "scholarshipInterest",
+      key: "supportType",
       title: "Choose your support",
-      prompt: "Would you like to apply for a scholarship?",
-      hint: "Up to 100% off .",
+      prompt: "Would you like to apply for a sponsored training?",
+      hint: "Choose a sponsored scholarship or request specialized training and mentorship.",
       kind: "choice",
       options: [
         "I'm here for the free tech bootcamp",
-        "I want to self-fund my tuition",
+        "I want specialized training and mentorship",
       ],
     },
   ];
 
-  if (answers.scholarshipInterest === "I'm here for the free tech bootcamp") {
+  if (answers.supportType === "I'm here for the free tech bootcamp") {
     questions.push({
       key: "scholarship",
       title: "Choose your support",
       prompt: "Pick a scholarship",
       hint: "Scroll to see all scholarships. Only one scholarship can be selected.",
       kind: "choice",
-      options: scholarships,
+      options: scholarshipOptions,
     });
   }
 
@@ -254,7 +211,7 @@ function makeQuestions(answers: Answers): Question[] {
       key: "phone",
       title: "Your contact details",
       prompt: "What’s your WhatsApp number?",
-      hint: "Include your country code if you can.",
+      hint: "Enter your local number; we’ll remove its leading 0 and add the country code you select. For Other, include + and your country code.",
       kind: "text",
       inputType: "tel",
       autoComplete: "tel",
@@ -336,9 +293,45 @@ function makeQuestions(answers: Answers): Question[] {
       prompt: "What would you love to learn?",
       hint: "Scroll the card to explore every course.",
       kind: "choice",
-      options: courses,
+      options: courseOptions,
       columns: 2,
     },
+  );
+
+  if (answers.supportType === "I want specialized training and mentorship") {
+    questions.push(
+      {
+        key: "specializedFocus",
+        title: "Your specialized training",
+        prompt: "What would you like specialized training in?",
+        hint: "Tell us the skill, tool, or topic you want to focus on.",
+        kind: "text",
+        maxLength: 500,
+      },
+      {
+        key: "specializedGoal",
+        title: "Your specialized training",
+        prompt: "What would you like to achieve?",
+        hint: "Share the outcome you want from this training and mentorship.",
+        kind: "text",
+        maxLength: 1000,
+      },
+      {
+        key: "mentorSupport",
+        title: "Your specialized training",
+        prompt: "What kind of mentor support would help you most?",
+        kind: "choice",
+        options: [
+          "One-to-one guidance and regular check-ins",
+          "Portfolio and project feedback",
+          "Career planning and accountability",
+          "Practical help with a specific challenge",
+        ],
+      },
+    );
+  }
+
+  questions.push(
     {
       key: "learningMode",
       title: "Your learning plan",
@@ -350,9 +343,14 @@ function makeQuestions(answers: Answers): Question[] {
     {
       key: "startDate",
       title: "Your learning plan",
-      prompt: "When would you like to start?",
+      prompt: "Which training cohort would you like to join?",
+      hint: cohortOptions.some((cohort) => cohort.courseTitle === answers.course)
+        ? "Available cohort start dates are managed by GEME3T Academy."
+        : "There are no future cohorts open for this course yet. Please check back soon.",
       kind: "choice",
-      options: startDates,
+      options: cohortOptions
+        .filter((cohort) => cohort.courseTitle === answers.course)
+        .map(({ value, label }) => ({ value, label })),
     },
     {
       key: "experience",
@@ -381,7 +379,15 @@ function makeQuestions(answers: Answers): Question[] {
   return questions;
 }
 
-export function ScholarshipApplication() {
+export function ScholarshipApplication({
+  courseOptions,
+  scholarshipOptions,
+  cohortOptions,
+}: {
+  courseOptions: string[];
+  scholarshipOptions: ScholarshipOption[];
+  cohortOptions: CohortOption[];
+}) {
   const [step, setStep] = useState(0);
   const [direction, setDirection] = useState<"forward" | "back">("forward");
   const [started, setStarted] = useState(false);
@@ -398,7 +404,12 @@ export function ScholarshipApplication() {
   const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
   const suppressClickRef = useRef(false);
   const autoAdvanceTimerRef = useRef<number | null>(null);
-  const questions = makeQuestions(answers);
+  const questions = makeQuestions(
+    answers,
+    courseOptions,
+    scholarshipOptions,
+    cohortOptions,
+  );
   const activeQuestion = questions[step];
   const isLastStep = activeQuestion?.kind === "review";
 
@@ -443,6 +454,14 @@ export function ScholarshipApplication() {
   }
 
   function validateActiveStep() {
+    if (
+      activeQuestion?.key === "startDate" &&
+      activeQuestion.kind === "choice" &&
+      activeQuestion.options.length === 0
+    ) {
+      return false;
+    }
+
     const controls =
       activePanelRef.current?.querySelectorAll<
         HTMLInputElement | HTMLSelectElement
@@ -482,14 +501,19 @@ export function ScholarshipApplication() {
   }
 
   function updateAnswer(name: string, value: string) {
-    if (name === "scholarshipInterest") setStarted(true);
+    if (name === "supportType") setStarted(true);
     setAnswers((current) => ({
       ...current,
       [name]: value,
-      ...(name === "scholarshipInterest" &&
-      value === "No, I’ll self-fund my tuition"
-        ? { scholarship: "" }
+      ...(name === "supportType"
+        ? {
+            scholarship: "",
+            specializedFocus: "",
+            specializedGoal: "",
+            mentorSupport: "",
+          }
         : {}),
+      ...(name === "course" ? { startDate: "" } : {}),
     }));
   }
 
@@ -616,18 +640,23 @@ export function ScholarshipApplication() {
 
   return (
     <section className={`application-page${started ? " application-page--started" : ""}`}>
+      {(courseOptions.length === 0 || scholarshipOptions.length === 0) && (
+        <p className="application-option-warning" role="status">
+          Applications are temporarily unavailable because there are no active
+          course or scholarship offers. Please check back soon.
+        </p>
+      )}
       <div className="application-shell">
         <header className="application-intro">
-          <span className="eyebrow">Your next chapter starts here</span>
-          <h1>Apply for the <span>2026 Tech Scholarships</span></h1>
+          Join now and start<span className="eyebrow">TRANSFORMING TOMORROW TODAY</span>
+          <h1>Apply for the <span>Free Tech Bootcamp </span></h1>
           <p>
-            The official GEME3T scholarship application. A few quick
-            questions, then you’re ready to review.
+            Join the next cohort of the GEME3T free tech bootcamp and gain the skills, mentorship, and career support you need to launch your tech career.
           </p>
           <div className="application-highlights">
             <span><strong>Up to 100%</strong> tuition support</span>
-            <span><strong>₦447,000</strong> tuition value</span>
-            <span><strong>Closes Oct 30, 2026</strong></span>
+            <span><strong>₦500,000</strong> tuition value</span>
+            <span><strong>Application Closes Nov 30, 2026</strong></span>
           </div>
         </header>
 
@@ -640,10 +669,10 @@ export function ScholarshipApplication() {
               <li><span aria-hidden="true">✓</span> Practical learning</li>
               <li><span aria-hidden="true">✓</span> Internship opportunities</li>
               <li><span aria-hidden="true">✓</span> Career placement support</li>
-              <li><span aria-hidden="true">✓</span> A community that champions you</li>
+              <li><span aria-hidden="true">✓</span> A community that transforms you</li>
             </ul>
             <p className="application-sidebar-note">
-              New to tech? You’re in the right place.
+              New to tech? No worries. GEME3T is beginner-friendly and designed to help you launch your career.
             </p>
           </aside>
 
@@ -699,7 +728,7 @@ export function ScholarshipApplication() {
                       {activeQuestion.hint && (
                         <p className="application-step-lede">{activeQuestion.hint}</p>
                       )}
-                      {activeQuestion.key === "scholarshipInterest" && (
+                      {activeQuestion.key === "supportType" && (
                         <p className="application-swipe-cue">
                           On mobile, swipe left to continue or right to go back.
                         </p>
@@ -716,24 +745,32 @@ export function ScholarshipApplication() {
                             <legend className="application-visually-hidden">
                               {activeQuestion.prompt} *
                             </legend>
-                            <ChoiceCards
-                              columns={
-                                activeQuestion.key === "course"
-                                  ? 2
-                                  : activeQuestion.key === "country"
+                            {activeQuestion.key === "startDate" &&
+                            activeQuestion.options.length === 0 ? (
+                              <p className="application-inline-note">
+                                There are no open cohorts for this course yet.
+                                Please contact the GEME3T team or check back soon.
+                              </p>
+                            ) : (
+                              <ChoiceCards
+                                columns={
+                                  activeQuestion.key === "course"
                                     ? 2
-                                    : activeQuestion.columns ?? 2
-                              }
-                              compact={
-                                activeQuestion.key === "course" ||
-                                activeQuestion.key === "status" ||
-                                activeQuestion.key === "education"
-                              }
-                              name={activeQuestion.key}
-                              onChange={updateAnswer}
-                              options={activeQuestion.options}
-                              value={answers[activeQuestion.key] ?? ""}
-                            />
+                                    : activeQuestion.key === "country"
+                                      ? 2
+                                      : activeQuestion.columns ?? 2
+                                }
+                                compact={
+                                  activeQuestion.key === "course" ||
+                                  activeQuestion.key === "status" ||
+                                  activeQuestion.key === "education"
+                                }
+                                name={activeQuestion.key}
+                                onChange={updateAnswer}
+                                options={activeQuestion.options}
+                                value={answers[activeQuestion.key] ?? ""}
+                              />
+                            )}
                           </fieldset>
                         </>
                       ) : (
@@ -764,9 +801,35 @@ export function ScholarshipApplication() {
                           <div>
                             <h3>Scholarship</h3>
                           </div>
-                          {answers.scholarship
-                            ? reviewAnswer("scholarship", "Award", answers.scholarship)
-                            : reviewAnswer("scholarshipInterest", "Tuition", "Self-funded")}
+                          {reviewAnswer(
+                            "supportType",
+                            "Support",
+                            answers.supportType,
+                          )}
+                          {answers.supportType ===
+                            "I'm here for the free tech bootcamp" &&
+                            answers.scholarship &&
+                            reviewAnswer("scholarship", "Award", answers.scholarship)}
+                          {answers.supportType ===
+                            "I want specialized training and mentorship" && (
+                            <>
+                              {reviewAnswer(
+                                "specializedFocus",
+                                "Specialization",
+                                answers.specializedFocus,
+                              )}
+                              {reviewAnswer(
+                                "specializedGoal",
+                                "Training goal",
+                                answers.specializedGoal,
+                              )}
+                              {reviewAnswer(
+                                "mentorSupport",
+                                "Mentor support",
+                                answers.mentorSupport,
+                              )}
+                            </>
+                          )}
                         </section>
                         <section>
                           <div>
@@ -775,7 +838,17 @@ export function ScholarshipApplication() {
                           {reviewAnswer("firstName", "First name", answers.firstName)}
                           {reviewAnswer("lastName", "Last name", answers.lastName)}
                           {reviewAnswer("email", "Email", answers.email)}
-                          {reviewAnswer("phone", "WhatsApp", answers.phone)}
+                          {reviewAnswer(
+                            "phone",
+                            "WhatsApp",
+                            (answers.phone &&
+                              answers.country &&
+                              normalizeWhatsAppNumber(
+                                answers.phone,
+                                answers.country,
+                              )) ||
+                              answers.phone,
+                          )}
                         </section>
                         <section>
                           <div>
@@ -804,7 +877,13 @@ export function ScholarshipApplication() {
                           </div>
                           {reviewAnswer("course", "Course", answers.course)}
                           {reviewAnswer("learningMode", "Learning mode", answers.learningMode)}
-                          {reviewAnswer("startDate", "Start date", answers.startDate)}
+                          {reviewAnswer(
+                            "startDate",
+                            "Selected cohort",
+                            cohortOptions.find(
+                              (cohort) => cohort.value === answers.startDate,
+                            )?.label ?? "",
+                          )}
                         </section>
                         <section>
                           <div>
@@ -873,7 +952,13 @@ export function ScholarshipApplication() {
                     </button>
                     <button
                       className="application-step-button"
-                      disabled={isLastStep || autoAdvancing}
+                      disabled={
+                        isLastStep ||
+                        autoAdvancing ||
+                        (activeQuestion?.key === "startDate" &&
+                          activeQuestion.kind === "choice" &&
+                          activeQuestion.options.length === 0)
+                      }
                       onClick={goToNextStep}
                       type="button"
                     >

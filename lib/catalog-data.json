@@ -1,0 +1,164 @@
+{
+  "courses": [
+    {
+      "slug": "product-management",
+      "title": "Product Management",
+      "category": "Product",
+      "description": "Learn to discover customer needs, shape product strategy, and lead teams from idea to launch.",
+      "image": "/frontend/wp-content/uploads/2025/09/176744.jpg",
+      "durationWeeks": 16
+    },
+    {
+      "slug": "product-design-ui-ux",
+      "title": "Product Design (UI/UX)",
+      "category": "Product",
+      "description": "Build thoughtful digital experiences through research, interaction design, and visual craft.",
+      "image": "/frontend/wp-content/uploads/2025/09/Frame-43961.png",
+      "durationWeeks": 16
+    },
+    {
+      "slug": "cybersecurity",
+      "title": "Cybersecurity",
+      "category": "Engineering",
+      "description": "Develop the practical foundations to protect systems, investigate risks, and respond to threats.",
+      "image": "/frontend/wp-content/uploads/2025/09/2150038913-1.jpg",
+      "durationWeeks": 16
+    },
+    {
+      "slug": "frontend-development",
+      "title": "Frontend Development",
+      "category": "Engineering",
+      "description": "Turn ideas into polished, responsive web experiences with modern front-end tools.",
+      "image": "/frontend/wp-content/uploads/2025/09/108661.jpg",
+      "durationWeeks": 16
+    },
+    {
+      "slug": "data-science",
+      "title": "Data Science",
+      "category": "Data & AI",
+      "description": "Use statistics, programming, and machine learning to find insight in real-world data.",
+      "image": "/frontend/wp-content/uploads/2025/09/1677.jpg",
+      "durationWeeks": 16
+    },
+    {
+      "slug": "backend-development",
+      "title": "Backend Development",
+      "category": "Engineering",
+      "description": "Build secure APIs and reliable services that power useful, scalable digital products.",
+      "image": "/frontend/wp-content/uploads/2025/09/121390.jpg",
+      "durationWeeks": 16
+    },
+    {
+      "slug": "ai-automation",
+      "title": "AI & Automation",
+      "category": "Data & AI",
+      "description": "Apply artificial intelligence and automation tools to solve meaningful business problems.",
+      "image": "/frontend/wp-content/uploads/2025/09/47.jpg",
+      "durationWeeks": 16
+    },
+    {
+      "slug": "product-digital-marketing",
+      "title": "Product & Digital Marketing",
+      "category": "Media",
+      "description": "Combine audience insight, product thinking, and digital campaigns to drive sustainable growth.",
+      "image": "/frontend/wp-content/uploads/2025/09/2150038913-1.jpg",
+      "durationWeeks": 16
+    },
+    {
+      "slug": "social-media-marketing",
+      "title": "Social Media Marketing",
+      "category": "Media",
+      "description": "Create social strategies and content that build communities and support business goals.",
+      "image": "/frontend/wp-content/uploads/2025/09/108661.jpg",
+      "durationWeeks": 12
+    },
+    {
+      "slug": "content-creation",
+      "title": "Content Creation",
+      "category": "Media",
+      "description": "Plan, produce, and publish compelling digital content for a changing online world.",
+      "image": "/frontend/wp-content/uploads/2025/09/121390.jpg",
+      "durationWeeks": 12
+    },
+    {
+      "slug": "graphics-design",
+      "title": "Graphics Design",
+      "category": "Media",
+      "description": "Develop visual communication skills and create clear, memorable design work.",
+      "image": "/frontend/wp-content/uploads/2025/09/Frame-43961.png",
+      "durationWeeks": 12
+    },
+    {
+      "slug": "data-analytics",
+      "title": "Data Analytics",
+      "category": "Data & AI",
+      "description": "Turn business data into clear reports, dashboards, and decisions you can act on.",
+      "image": "/frontend/wp-content/uploads/2025/09/1677.jpg",
+      "durationWeeks": 16
+    },
+    {
+      "slug": "devops-engineering",
+      "title": "DevOps Engineering",
+      "category": "Engineering",
+      "description": "Bring development and operations together with cloud, automation, and delivery practices.",
+      "image": "/frontend/wp-content/uploads/2025/09/2150038913-1.jpg",
+      "durationWeeks": 16
+    },
+    {
+      "slug": "software-development",
+      "title": "Software Development",
+      "category": "Engineering",
+      "description": "Learn core software principles and build practical applications from the ground up.",
+      "image": "/frontend/wp-content/uploads/2025/09/108661.jpg",
+      "durationWeeks": 20
+    },
+    {
+      "slug": "project-management",
+      "title": "Project Management",
+      "category": "Product",
+      "description": "Plan, coordinate, and deliver projects with clear communication and confident leadership.",
+      "image": "/frontend/wp-content/uploads/2025/09/176744.jpg",
+      "durationWeeks": 12
+    },
+    {
+      "slug": "virtual-assistant",
+      "title": "Virtual Assistant",
+      "category": "Media",
+      "description": "Build the digital, organizational, and communication skills to support modern teams remotely.",
+      "image": "/frontend/wp-content/uploads/2025/09/47.jpg",
+      "durationWeeks": 12
+    }
+  ],
+  "scholarships": [
+    {
+      "name": "DOU BLOG TV Tech Scholarship FOR 100 STUDENTS",
+      "sponsor": "DOU BLOG TV",
+      "tuitionPercent": 100
+    },
+    {
+      "name": "NACOS DOU CHAPTER Tech Scholarship FOR 100 STUDENTS",
+      "sponsor": "NACOS DOU CHAPTER",
+      "tuitionPercent": 100
+    },
+    {
+      "name": "INGATHERING DOU CHAPTER Tech Scholarship FOR 100 STUDENTS",
+      "sponsor": "INGATHERING DOU CHAPTER",
+      "tuitionPercent": 100
+    },
+    {
+      "name": "RCCG DOU CHAPTER Tech Scholarship FOR 100 STUDENTS",
+      "sponsor": "RCCG DOU CHAPTER",
+      "tuitionPercent": 100
+    },
+    {
+      "name": "GEME3T Scholarship FOR 100 STUDENTS",
+      "sponsor": "GEME3T Academy",
+      "tuitionPercent": 100
+    },
+    {
+      "name": "CGMI ASABA Scholarship FOR 100 STUDENTS",
+      "sponsor": "CGMI ASABA",
+      "tuitionPercent": 100
+    }
+  ]
+}

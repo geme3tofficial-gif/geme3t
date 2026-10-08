@@ -1,7 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { courses, getCourse, sitePages } from "@/lib/site-data";
+import type { Course } from "@/lib/site-data";
 import { CourseCard } from "./course-card";
 import {
   CallToAction,
@@ -60,10 +60,7 @@ function PageHero({
   );
 }
 
-function CoursePage({ slug }: { slug: string }) {
-  const course = getCourse(slug);
-  if (!course) notFound();
-
+function CoursePage({ course }: { course: Course }) {
   return (
     <>
       <PageHero
@@ -150,7 +147,7 @@ function CoursePage({ slug }: { slug: string }) {
   );
 }
 
-function CoursesPage() {
+function CoursesPage({ courses }: { courses: Course[] }) {
   return (
     <>
       <PageHero
@@ -749,12 +746,20 @@ function LegalPage({
   );
 }
 
-export function PublicPage({ slug }: { slug: string }) {
-  if (getCourse(slug)) return <CoursePage slug={slug} />;
+export function PublicPage({
+  slug,
+  course,
+  courses,
+}: {
+  slug: string;
+  course?: Course | null;
+  courses?: Course[];
+}) {
+  if (course) return <CoursePage course={course} />;
 
   switch (slug) {
     case "courses":
-      return <CoursesPage />;
+      return <CoursesPage courses={courses ?? []} />;
     case "about-us":
       return <AboutPage />;
     case "school":
@@ -779,8 +784,6 @@ export function PublicPage({ slug }: { slug: string }) {
 }
 
 export function getPageDescription(slug: string) {
-  const course = getCourse(slug);
-  if (course) return course.description;
   const descriptions: Record<string, string> = {
     "about-us": "Learn about GEME3T Academy and our approach to practical education.",
     contact: "Talk with GEME3T Academy about courses, scholarships, and getting started.",
@@ -793,9 +796,4 @@ export function getPageDescription(slug: string) {
     "terms-condition": "Read the GEME3T Academy terms and conditions.",
   };
   return descriptions[slug] ?? "Explore practical learning with GEME3T Academy.";
-}
-
-export function hasPublicPage(slug: string) {
-  return courses.some((course) => course.slug === slug) ||
-    (sitePages as readonly string[]).includes(slug);
 }

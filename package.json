@@ -10,8 +10,14 @@
     "postinstall": "prisma generate",
     "db:generate": "prisma generate",
     "db:validate": "prisma validate",
+    "db:seed": "prisma db seed",
+    "db:seed:admin": "node --env-file=.env prisma/seed-admin.mjs",
+    "db:seed:demo-users": "node --env-file=.env prisma/seed-demo-users.mjs",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.mjs"
   },
   "dependencies": {
     "@prisma/client": "6.12.0",
@@ -28,7 +34,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.8",
-    "prisma": "6.12.0",
+    "prisma": "^6.12.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

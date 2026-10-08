@@ -23,6 +23,10 @@ const navigation: Record<DashboardRole, NavigationItem[]> = {
   Administrator: [
     { href: "/admin", icon: "⌂", label: "Overview" },
     { href: "/admin/courses", icon: "▤", label: "Courses" },
+    { href: "/admin/scholarships", icon: "✦", label: "Scholarships" },
+    { href: "/admin/applications", icon: "▤", label: "Applications" },
+    { href: "/admin/cohorts", icon: "◷", label: "Cohorts" },
+    { href: "/admin/sessions", icon: "◉", label: "Training sessions" },
     { href: "/admin/learners", icon: "♙", label: "Learners" },
     { href: "/admin/teachers", icon: "♧", label: "Teachers" },
     { href: "/admin/reports", icon: "▥", label: "Reports" },

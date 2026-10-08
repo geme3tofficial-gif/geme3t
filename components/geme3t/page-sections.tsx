@@ -1,7 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { CourseCard } from "./course-card";
-import { courses } from "@/lib/site-data";
+import type { Course } from "@/lib/site-data";
 
 const benefits = [
   {
@@ -42,15 +42,15 @@ const testimonials = [
   },
 ];
 
-export function HomePage() {
+export function HomePage({ courses }: { courses: Course[] }) {
   return (
     <>
       <section className="hero">
         <div className="container hero-grid">
           <div className="hero-copy">
-            <span className="eyebrow">Your next chapter starts here</span>
+            <span className="eyebrow">We make you career and future ready.</span>
             <h1>
-              Redefining learning for the <span>future workforce.</span>
+             Training and Transforming the next generation   <span>modern tech users</span>
             </h1>
             <p>
               Build practical, in-demand skills with flexible learning and
@@ -58,16 +58,16 @@ export function HomePage() {
             </p>
             <div className="hero-actions">
               <Link className="button" href="/apply">
-                Apply for a scholarship <span aria-hidden="true">→</span>
+                Join Campus Tech Bootcamp <span aria-hidden="true">→</span>
               </Link>
               <Link className="button button--light" href="/courses">
-                Explore our courses
+                What you can learn <span aria-hidden="true">→</span>
               </Link>
             </div>
             <div className="hero-note">
               <span className="check-mark">✓</span>
               <span>
-                Designed for <strong>beginners and career changers</strong>
+                Tailored for any background in tech <strong>to the future </strong>
               </span>
             </div>
           </div>
@@ -78,7 +78,7 @@ export function HomePage() {
                 fill
                 priority
                 sizes="(max-width: 680px) 90vw, 48vw"
-                src="/frontend/wp-content/uploads/2025/09/n-nb-m-1.png"
+                src="/images/HERO-PIC.png"
               />
             </div>
             <div className="floating-card">
@@ -86,8 +86,8 @@ export function HomePage() {
                 ↗
               </span>
               <span>
-                <strong>Learn at your pace</strong>
-                <span>With real people beside you</span>
+                <strong>Practical Learning</strong>
+                <span>Under the right community</span>
               </span>
             </div>
           </div>

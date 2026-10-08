@@ -33,6 +33,12 @@ enum ApplicationStatus {
   WITHDRAWN
 }
 
+enum ApplicationSupportType {
+  SELF_FUNDED
+  SCHOLARSHIP
+  SPECIALIZED_MENTORSHIP
+}
+
 enum LearningMode {
   ONLINE
   ONSITE
@@ -158,10 +164,19 @@ model ScholarshipApplication {
   employmentStatus    String            @map("employment_status")
   educationLevel      String            @map("education_level")
   scholarshipInterest Boolean           @map("scholarship_interest")
+  supportType         ApplicationSupportType @default(SELF_FUNDED) @map("support_type")
+  specializedFocus    String?           @map("specialized_focus") @db.Text
+  specializedGoal     String?           @map("specialized_goal") @db.Text
+  mentorSupport       String?           @map("mentor_support") @db.Text
   scholarshipId       String?           @map("scholarship_id") @db.Uuid
   scholarship         Scholarship?      @relation(fields: [scholarshipId], references: [id], onDelete: SetNull)
   scholarshipName     String?           @map("scholarship_name")
-  courseId            String?           @map("course_id") @db.Uuid
+  scholarshipPercent Int?               @map("scholarship_percent")
+  scholarshipAmount  Decimal?           @map("scholarship_amount") @db.Decimal(12, 2)
+  scholarshipCurrency String?            @map("scholarship_currency")
+  cohortId            String?            @map("cohort_id") @db.Uuid
+  cohort              Cohort?             @relation(fields: [cohortId], references: [id], onDelete: SetNull)
+  courseId           String?            @map("course_id") @db.Uuid
   course              Course?           @relation(fields: [courseId], references: [id], onDelete: SetNull)
   courseName          String            @map("course_name")
   learningMode        LearningMode      @map("learning_mode")
@@ -195,6 +210,7 @@ model Cohort {
   enrollments Enrollment[]
   teachers    CohortTeachingAssignment[]
   sessions    LiveSession[]
+  applications ScholarshipApplication[]
 
   @@unique([courseId, name])
   @@index([status, startsAt])

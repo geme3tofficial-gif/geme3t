@@ -15,6 +15,18 @@ const adminSections: Record<string, WorkspaceSection> = {
     description: "Manage courses and programme availability.",
     emptyMessage: "Course records will appear after the database-backed course manager is connected.",
   },
+  cohorts: {
+    title: "Training cohorts",
+    description: "Manage course start and end dates and open application cohorts.",
+    emptyMessage: "Create and manage training cohorts and their start dates.",
+    links: [{ href: "/admin/cohorts", label: "Manage training cohorts" }],
+  },
+  sessions: {
+    title: "Training sessions",
+    description: "Schedule individual sessions and assign cohort teachers.",
+    emptyMessage: "Create and manage training session schedules.",
+    links: [{ href: "/admin/sessions", label: "Manage training sessions" }],
+  },
   learners: {
     title: "Learner management",
     description: "Review learner profiles and support needs.",
