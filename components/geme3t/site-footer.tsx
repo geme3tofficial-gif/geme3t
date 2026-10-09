@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Brand } from "./site-header";
+import { Brand } from "./brand";
 
 const footerGroups = [
   {

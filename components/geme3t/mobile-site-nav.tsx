@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { createPortal } from "react-dom";
 import { useEffect, useRef, useState } from "react";
 
 const links = [
@@ -10,7 +11,11 @@ const links = [
   { href: "/contact", label: "Contact" },
 ];
 
-export function MobileSiteNav() {
+export function MobileSiteNav({
+  scholarshipsEnabled,
+}: {
+  scholarshipsEnabled: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
@@ -19,13 +24,19 @@ export function MobileSiteNav() {
     if (!open) return;
 
     const previousOverflow = document.body.style.overflow;
+    const previousPaddingRight = document.body.style.paddingRight;
+    const scrollbarWidth =
+      window.innerWidth - document.documentElement.clientWidth;
     document.body.style.overflow = "hidden";
-    closeButtonRef.current?.focus();
+    if (scrollbarWidth > 0) {
+      document.body.style.paddingRight = `${scrollbarWidth}px`;
+    }
+    closeButtonRef.current?.focus({ preventScroll: true });
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         setOpen(false);
-        menuButtonRef.current?.focus();
+        menuButtonRef.current?.focus({ preventScroll: true });
         return;
       }
 
@@ -50,13 +61,14 @@ export function MobileSiteNav() {
     document.addEventListener("keydown", handleKeyDown);
     return () => {
       document.body.style.overflow = previousOverflow;
+      document.body.style.paddingRight = previousPaddingRight;
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [open]);
 
   function closeMenu() {
     setOpen(false);
-    menuButtonRef.current?.focus();
+    menuButtonRef.current?.focus({ preventScroll: true });
   }
 
   return (
@@ -72,64 +84,67 @@ export function MobileSiteNav() {
       >
         <span aria-hidden="true">{open ? "×" : "☰"}</span>
       </button>
-      {open && (
-        <div className="mobile-nav-layer">
-          <button
-            aria-label="Close navigation menu"
-            className="mobile-nav-backdrop"
-            onClick={closeMenu}
-            tabIndex={-1}
-            type="button"
-          />
-          <nav
-            aria-label="Mobile navigation"
-            aria-modal="true"
-            className="mobile-nav-drawer"
-            id="mobile-site-drawer"
-            role="dialog"
-          >
-            <div className="mobile-nav-drawer-heading">
-              <div>
-                <span className="eyebrow">Explore GEME3T</span>
-                <h2>Where would you like to go?</h2>
+      {open &&
+        createPortal(
+          <div className="mobile-nav-layer">
+            <button
+              aria-label="Close navigation menu"
+              className="mobile-nav-backdrop"
+              onClick={closeMenu}
+              tabIndex={-1}
+              type="button"
+            />
+            <nav
+              aria-label="Mobile navigation"
+              aria-modal="true"
+              className="mobile-nav-drawer"
+              id="mobile-site-drawer"
+              role="dialog"
+            >
+              <div className="mobile-nav-drawer-heading">
+                <div>
+                  <span className="eyebrow">Explore GEME3T</span>
+                  <h2>Where would you like to go?</h2>
+                </div>
+                <button
+                  aria-label="Close navigation menu"
+                  className="mobile-nav-close"
+                  onClick={closeMenu}
+                  ref={closeButtonRef}
+                  type="button"
+                >
+                  <span aria-hidden="true">×</span>
+                </button>
               </div>
-              <button
-                aria-label="Close navigation menu"
-                className="mobile-nav-close"
-                onClick={closeMenu}
-                ref={closeButtonRef}
-                type="button"
-              >
-                <span aria-hidden="true">×</span>
-              </button>
-            </div>
-            <div className="mobile-nav-drawer-links">
-              {links.map((link) => (
-                <Link href={link.href} key={link.href} onClick={closeMenu}>
-                  {link.label}
+              <div className="mobile-nav-drawer-links">
+                {links.map((link) => (
+                  <Link href={link.href} key={link.href} onClick={closeMenu}>
+                    {link.label}
+                    <span aria-hidden="true">→</span>
+                  </Link>
+                ))}
+              </div>
+              <div className="mobile-nav-drawer-actions">
+                <Link
+                  className="button button--pulse"
+                  href="/apply"
+                  onClick={closeMenu}
+                >
+                  {scholarshipsEnabled ? "Join Campus Tech Bootcamp" : "Enroll now"}{" "}
                   <span aria-hidden="true">→</span>
                 </Link>
-              ))}
-            </div>
-            <div className="mobile-nav-drawer-actions">
-              <Link
-                className="button button--pulse"
-                href="/apply"
-                onClick={closeMenu}
-              >
-                Join Campus Tech Bootcamp <span aria-hidden="true">→</span>
-              </Link>
-              <Link
-                className="mobile-nav-student-link"
-                href="/dashboard"
-                onClick={closeMenu}
-              >
-                Student portal <span aria-hidden="true">↗</span>
-              </Link>
-            </div>
-          </nav>
-        </div>
-      )}
+                <Link
+                  className="mobile-nav-student-link"
+                  href="/dashboard"
+                  onClick={closeMenu}
+                >
+                  Student portal <span aria-hidden="true">↗</span>
+                </Link>
+              </div>
+            </nav>
+          </div>,
+          document.body,
+        )}
     </>
   );
 }

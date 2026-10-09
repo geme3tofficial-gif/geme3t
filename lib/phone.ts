@@ -1,33 +1,46 @@
-const callingCodes: Record<string, string> = {
-  Nigeria: "234",
-  UK: "44",
-  "United States": "1",
-  Ghana: "233",
-  Kenya: "254",
-  Canada: "1",
-};
+import {
+  getCountries,
+  getCountryCallingCode,
+  isSupportedCountry,
+  parsePhoneNumberFromString,
+  type CountryCode,
+} from "libphonenumber-js";
+
+const countryNames = new Intl.DisplayNames(["en"], { type: "region" });
+
+function countryFlag(countryCode: CountryCode) {
+  return String.fromCodePoint(
+    ...countryCode
+      .split("")
+      .map((character) => character.charCodeAt(0) + 127397),
+  );
+}
+
+export const phoneCountries = getCountries()
+  .map((countryCode) => ({
+    countryCode,
+    callingCode: getCountryCallingCode(countryCode),
+    name: countryNames.of(countryCode) ?? countryCode,
+    flag: countryFlag(countryCode),
+  }))
+  .sort((left, right) => {
+    if (left.countryCode === "NG") return -1;
+    if (right.countryCode === "NG") return 1;
+    return left.name.localeCompare(right.name);
+  });
 
 export function normalizeWhatsAppNumber(
   input: string,
-  country: string,
+  countryCode: string,
 ): string | null {
   const compact = input.trim().replace(/[\s().-]/g, "");
+  const normalizedCountryCode = countryCode.toUpperCase();
+  if (!compact || !isSupportedCountry(normalizedCountryCode)) return null;
 
-  if (/^\+\d{7,15}$/.test(compact)) return compact;
-  if (/^00\d{7,15}$/.test(compact)) return `+${compact.slice(2)}`;
-  if (!/^\d+$/.test(compact)) return null;
+  const parsed = parsePhoneNumberFromString(
+    compact,
+    normalizedCountryCode,
+  );
 
-  const callingCode = callingCodes[country];
-  if (!callingCode) return null;
-
-  const nationalNumber = compact.startsWith("0")
-    ? compact.slice(1)
-    : compact;
-  const internationalNumber = `${callingCode}${nationalNumber}`;
-
-  if (internationalNumber.length < 7 || internationalNumber.length > 15) {
-    return null;
-  }
-
-  return `+${internationalNumber}`;
+  return parsed?.isValid() ? parsed.number : null;
 }

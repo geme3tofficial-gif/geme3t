@@ -1,5 +1,7 @@
-import Image from "next/image";
 import Link from "next/link";
+import { connection } from "next/server";
+import { getPrismaClient } from "@/lib/prisma";
+import { Brand } from "./brand";
 import { MobileSiteNav } from "./mobile-site-nav";
 
 const links = [
@@ -9,28 +11,12 @@ const links = [
   { href: "/contact", label: "Contact" },
 ];
 
-export function Brand() {
-  return (
-    <Link
-      aria-label="GEME3T Academy home"
-      className="brand-link"
-      href="/"
-    >
-      <Image
-        alt="GEME3T"
-        className="brand-logo"
-        height={408}
-        src="/images/logo-no-bg.png"
-        width={612}
-      />
-      <span className="brand-name">
-        <span>Academy</span>
-      </span>
-    </Link>
-  );
-}
-
-export function SiteHeader() {
+export async function SiteHeader() {
+  await connection();
+  const config = await getPrismaClient().applicationConfig.findUnique({
+    where: { id: 1 },
+    select: { scholarshipsEnabled: true },
+  });
   return (
     <header className="site-header">
       <div className="container site-nav">
@@ -45,7 +31,7 @@ export function SiteHeader() {
             Student portal
           </Link>
         </nav>
-        <MobileSiteNav />
+        <MobileSiteNav scholarshipsEnabled={config?.scholarshipsEnabled ?? true} />
       </div>
     </header>
   );

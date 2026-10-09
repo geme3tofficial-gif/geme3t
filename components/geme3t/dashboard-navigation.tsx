@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Brand } from "./site-header";
+import { Brand } from "./brand";
 
 export type DashboardRole = "Student" | "Administrator" | "Teacher";
 

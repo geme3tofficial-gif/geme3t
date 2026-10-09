@@ -3,8 +3,8 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
 }
 
@@ -37,6 +37,7 @@ enum ApplicationSupportType {
   SELF_FUNDED
   SCHOLARSHIP
   SPECIALIZED_MENTORSHIP
+  PROMO
 }
 
 enum LearningMode {
@@ -66,6 +67,13 @@ enum LessonKind {
   QUIZ
   ASSIGNMENT
   LIVE
+}
+
+enum ModuleAccessType {
+  FREE_BOOTCAMP
+  PAID
+  PROMO
+  ALL_ENROLLED
 }
 
 enum LessonProgressStatus {
@@ -110,17 +118,18 @@ model UserProfile {
 }
 
 model Course {
-  id            String       @id @default(uuid()) @db.Uuid
-  slug          String       @unique
-  title         String
-  category      String
-  description   String       @db.Text
-  imageUrl      String?      @map("image_url")
-  durationWeeks Int          @map("duration_weeks")
-  status        CourseStatus @default(DRAFT)
-  publishedAt   DateTime?    @map("published_at") @db.Timestamptz(6)
-  createdAt     DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt     DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id                  String       @id @default(uuid()) @db.Uuid
+  slug                String       @unique
+  title               String
+  category            String
+  description         String       @db.Text
+  imageUrl            String?      @map("image_url")
+  durationWeeks       Int          @map("duration_weeks")
+  freeBootcampEnabled Boolean      @default(false) @map("free_bootcamp_enabled")
+  status              CourseStatus @default(DRAFT)
+  publishedAt         DateTime?    @map("published_at") @db.Timestamptz(6)
+  createdAt           DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   applications ScholarshipApplication[]
   cohorts      Cohort[]
@@ -149,45 +158,65 @@ model Scholarship {
   @@map("scholarships")
 }
 
+model ApplicationConfig {
+  id                  Int      @id @default(1)
+  scholarshipsEnabled Boolean  @default(true) @map("scholarships_enabled")
+  updatedAt           DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("application_config")
+}
+
+model OnboardingFieldSetting {
+  fieldKey  String   @id @map("field_key")
+  audiences String[] @default([])
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("onboarding_field_settings")
+}
+
 model ScholarshipApplication {
-  id                  String            @id @default(uuid()) @db.Uuid
-  applicantId         String?           @map("applicant_id") @db.Uuid
-  applicant           UserProfile?      @relation("Applicant", fields: [applicantId], references: [id], onDelete: SetNull)
-  firstName           String            @map("first_name")
-  lastName            String            @map("last_name")
-  email               String
-  phone               String
-  gender              String
-  country             String
-  otherCountry        String?           @map("other_country")
-  location            String
-  employmentStatus    String            @map("employment_status")
-  educationLevel      String            @map("education_level")
-  scholarshipInterest Boolean           @map("scholarship_interest")
-  supportType         ApplicationSupportType @default(SELF_FUNDED) @map("support_type")
-  specializedFocus    String?           @map("specialized_focus") @db.Text
-  specializedGoal     String?           @map("specialized_goal") @db.Text
-  mentorSupport       String?           @map("mentor_support") @db.Text
-  scholarshipId       String?           @map("scholarship_id") @db.Uuid
-  scholarship         Scholarship?      @relation(fields: [scholarshipId], references: [id], onDelete: SetNull)
-  scholarshipName     String?           @map("scholarship_name")
-  scholarshipPercent Int?               @map("scholarship_percent")
-  scholarshipAmount  Decimal?           @map("scholarship_amount") @db.Decimal(12, 2)
-  scholarshipCurrency String?            @map("scholarship_currency")
-  cohortId            String?            @map("cohort_id") @db.Uuid
-  cohort              Cohort?             @relation(fields: [cohortId], references: [id], onDelete: SetNull)
-  courseId           String?            @map("course_id") @db.Uuid
-  course              Course?           @relation(fields: [courseId], references: [id], onDelete: SetNull)
-  courseName          String            @map("course_name")
-  learningMode        LearningMode      @map("learning_mode")
-  preferredStartDate  DateTime?         @map("preferred_start_date") @db.Date
-  techExperience      String            @map("tech_experience")
-  jobPlacementSupport Boolean           @map("job_placement_support")
-  termsAcceptedAt     DateTime          @map("terms_accepted_at") @db.Timestamptz(6)
-  status              ApplicationStatus @default(SUBMITTED)
-  submittedAt         DateTime          @default(now()) @map("submitted_at") @db.Timestamptz(6)
-  createdAt           DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt           DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id                       String                 @id @default(uuid()) @db.Uuid
+  applicantId              String?                @map("applicant_id") @db.Uuid
+  applicant                UserProfile?           @relation("Applicant", fields: [applicantId], references: [id], onDelete: SetNull)
+  firstName                String                 @map("first_name")
+  lastName                 String                 @map("last_name")
+  email                    String
+  phone                    String
+  gender                   String
+  country                  String
+  otherCountry             String?                @map("other_country")
+  location                 String
+  employmentStatus         String                 @map("employment_status")
+  educationLevel           String                 @map("education_level")
+  scholarshipInterest      Boolean                @map("scholarship_interest")
+  supportType              ApplicationSupportType @default(SELF_FUNDED) @map("support_type")
+  specializedFocus         String?                @map("specialized_focus") @db.Text
+  specializedGoal          String?                @map("specialized_goal") @db.Text
+  mentorSupport            String?                @map("mentor_support") @db.Text
+  promoCode                String?                @map("promo_code")
+  promoCampaignId          String?                @map("promo_campaign_id") @db.Uuid
+  promoCampaign            PromoCampaign?         @relation(fields: [promoCampaignId], references: [id], onDelete: SetNull)
+  completionRequiredFields String[]               @default([]) @map("completion_required_fields")
+  scholarshipId            String?                @map("scholarship_id") @db.Uuid
+  scholarship              Scholarship?           @relation(fields: [scholarshipId], references: [id], onDelete: SetNull)
+  scholarshipName          String?                @map("scholarship_name")
+  scholarshipPercent       Int?                   @map("scholarship_percent")
+  scholarshipAmount        Decimal?               @map("scholarship_amount") @db.Decimal(12, 2)
+  scholarshipCurrency      String?                @map("scholarship_currency")
+  cohortId                 String?                @map("cohort_id") @db.Uuid
+  cohort                   Cohort?                @relation(fields: [cohortId], references: [id], onDelete: SetNull)
+  courseId                 String?                @map("course_id") @db.Uuid
+  course                   Course?                @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  courseName               String                 @map("course_name")
+  learningMode             LearningMode           @map("learning_mode")
+  preferredStartDate       DateTime?              @map("preferred_start_date") @db.Date
+  techExperience           String                 @map("tech_experience")
+  jobPlacementSupport      Boolean                @map("job_placement_support")
+  termsAcceptedAt          DateTime               @map("terms_accepted_at") @db.Timestamptz(6)
+  status                   ApplicationStatus      @default(SUBMITTED)
+  submittedAt              DateTime               @default(now()) @map("submitted_at") @db.Timestamptz(6)
+  createdAt                DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime               @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   enrollment Enrollment?
 
@@ -201,15 +230,16 @@ model Cohort {
   courseId  String       @map("course_id") @db.Uuid
   course    Course       @relation(fields: [courseId], references: [id], onDelete: Restrict)
   name      String
+  seatLimit Int?         @map("seat_limit")
   startsAt  DateTime     @map("starts_at") @db.Timestamptz(6)
   endsAt    DateTime?    @map("ends_at") @db.Timestamptz(6)
   status    CohortStatus @default(PLANNED)
   createdAt DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  enrollments Enrollment[]
-  teachers    CohortTeachingAssignment[]
-  sessions    LiveSession[]
+  enrollments  Enrollment[]
+  teachers     CohortTeachingAssignment[]
+  sessions     LiveSession[]
   applications ScholarshipApplication[]
 
   @@unique([courseId, name])
@@ -253,14 +283,15 @@ model Enrollment {
 }
 
 model CourseModule {
-  id          String   @id @default(uuid()) @db.Uuid
-  courseId    String   @map("course_id") @db.Uuid
-  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  id          String             @id @default(uuid()) @db.Uuid
+  courseId    String             @map("course_id") @db.Uuid
+  course      Course             @relation(fields: [courseId], references: [id], onDelete: Cascade)
   title       String
-  description String?  @db.Text
-  sortOrder   Int      @map("sort_order")
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  description String?            @db.Text
+  sortOrder   Int                @map("sort_order")
+  accessTypes ModuleAccessType[] @default([]) @map("access_types")
+  createdAt   DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   lessons Lesson[]
 
@@ -341,7 +372,8 @@ model PromoCampaign {
   createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  redemptions PromoRedemption[]
+  redemptions  PromoRedemption[]
+  applications ScholarshipApplication[]
 
   @@index([status, startsAt, endsAt])
   @@map("promo_campaigns")

@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { Fragment } from "react";
+import { zipSync, strToU8 } from "fflate";
+import { toast } from "sonner";
 
 export type ApplicationRow = {
   id: string;
@@ -71,6 +73,209 @@ function readable(value: string) {
   );
 }
 
+function exportFields(application: ApplicationRow): [string, string][] {
+  return [
+    ["Application ID", application.id],
+    ["Submitted", formatDate(application.submittedAt)],
+    ["Status", readable(application.status)],
+    ["First name", application.firstName],
+    ["Last name", application.lastName],
+    ["Email", application.email],
+    ["Phone", application.phone],
+    ["Gender", application.gender],
+    ["Country", application.otherCountry || application.country],
+    ["City / state", application.location],
+    ["Employment status", application.employmentStatus],
+    ["Education level", application.educationLevel],
+    ["Support type", readable(application.supportType)],
+    ["Scholarship interest", application.scholarshipInterest ? "Yes" : "No"],
+    ["Scholarship", application.scholarshipName ?? "Not applicable"],
+    ["Scholarship sponsor", application.scholarshipSponsor ?? "Not applicable"],
+    ["Tuition discount", application.scholarshipPercent === null ? "Not specified" : `${application.scholarshipPercent}%`],
+    ["Fixed award", application.scholarshipAmount ? `${application.scholarshipCurrency ?? ""} ${application.scholarshipAmount}`.trim() : "Not specified"],
+    ["Course", application.courseName],
+    ["Course category", application.courseCategory ?? "Not recorded"],
+    ["Course duration", application.courseDurationWeeks ? `${application.courseDurationWeeks} weeks` : "Not recorded"],
+    ["Learning mode", readable(application.learningMode)],
+    ["Cohort", application.cohortName ?? "Not recorded"],
+    ["Preferred start date", formatDate(application.preferredStartDate)],
+    ["Tech experience", application.techExperience],
+    ["Job placement support", application.jobPlacementSupport ? "Requested" : "Not requested"],
+    ["Specialized focus", application.specializedFocus ?? "Not applicable"],
+    ["Specialized goal", application.specializedGoal ?? "Not applicable"],
+    ["Mentor support", application.mentorSupport ?? "Not applicable"],
+    ["Terms accepted", formatDate(application.termsAcceptedAt)],
+  ];
+}
+
+function xmlEscape(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;")
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "");
+}
+
+function excelColumn(index: number) {
+  let column = "";
+  for (let value = index + 1; value > 0; value = Math.floor((value - 1) / 26)) {
+    column = String.fromCharCode(((value - 1) % 26) + 65) + column;
+  }
+  return column;
+}
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function exportFilename(extension: string) {
+  return `geme3t-applications-${new Date().toISOString().slice(0, 10)}.${extension}`;
+}
+
+async function downloadExcel(applications: ApplicationRow[]) {
+  const fields = applications.map(exportFields);
+  const headers = fields[0]?.map(([label]) => label) ?? [];
+  const rows = [
+    headers,
+    ...fields.map((application) => application.map(([, value]) => value)),
+  ];
+  const sheetRows = rows
+    .map(
+      (row, rowIndex) =>
+        `<row r="${rowIndex + 1}">${row
+          .map(
+            (value, columnIndex) =>
+              `<c r="${excelColumn(columnIndex)}${rowIndex + 1}" t="inlineStr"><is><t xml:space="preserve">${xmlEscape(value)}</t></is></c>`,
+          )
+          .join("")}</row>`,
+    )
+    .join("");
+  const dimension = `A1:${excelColumn(Math.max(headers.length - 1, 0))}${rows.length}`;
+  const workbook = zipSync({
+    "[Content_Types].xml": strToU8(
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>',
+    ),
+    "_rels/.rels": strToU8(
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>',
+    ),
+    "xl/workbook.xml": strToU8(
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Applications" sheetId="1" r:id="rId1"/></sheets></workbook>',
+    ),
+    "xl/_rels/workbook.xml.rels": strToU8(
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>',
+    ),
+    "xl/worksheets/sheet1.xml": strToU8(
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><dimension ref="${dimension}"/><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><sheetFormatPr defaultRowHeight="18"/><sheetData>${sheetRows}</sheetData></worksheet>`,
+    ),
+  });
+  downloadBlob(
+    new Blob([workbook], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    }),
+    exportFilename("xlsx"),
+  );
+}
+
+async function downloadDocx(applications: ApplicationRow[]) {
+  const { Document, HeadingLevel, Packer, Paragraph, TextRun } = await import("docx");
+  const children = [
+    new Paragraph({
+      text: "GEME3T Academy — Applicant Applications",
+      heading: HeadingLevel.TITLE,
+    }),
+    new Paragraph(`${applications.length} applicant records · generated ${new Date().toLocaleDateString()}`),
+  ];
+
+  applications.forEach((application) => {
+    children.push(
+      new Paragraph({
+        text: `${application.firstName} ${application.lastName}`,
+        heading: HeadingLevel.HEADING_1,
+      }),
+    );
+    for (const [label, value] of exportFields(application)) {
+      children.push(
+        new Paragraph({
+          children: [
+            new TextRun({ text: `${label}: `, bold: true }),
+            new TextRun(value),
+          ],
+        }),
+      );
+    }
+    children.push(new Paragraph(""));
+  });
+
+  const document = new Document({
+    sections: [{ properties: {}, children }],
+  });
+  downloadBlob(
+    await Packer.toBlob(document),
+    exportFilename("docx"),
+  );
+}
+
+async function downloadPdf(applications: ApplicationRow[]) {
+  const { jsPDF } = await import("jspdf");
+  const document = new jsPDF();
+  const pageWidth = document.internal.pageSize.getWidth();
+  const pageHeight = document.internal.pageSize.getHeight();
+  const margin = 16;
+  const lineHeight = 5;
+  let y = 18;
+
+  document.setFontSize(16);
+  document.text("GEME3T Academy — Applicant Applications", margin, y);
+  y += 8;
+  document.setFontSize(9);
+  document.text(
+    `${applications.length} applicant records · generated ${new Date().toLocaleDateString()}`,
+    margin,
+    y,
+  );
+  y += 10;
+
+  for (const application of applications) {
+    const heading = `${application.firstName} ${application.lastName}`;
+    if (y + 12 > pageHeight - margin) {
+      document.addPage();
+      y = margin;
+    }
+    document.setFontSize(12);
+    document.setFont("helvetica", "bold");
+    document.text(heading, margin, y);
+    y += 7;
+    document.setFontSize(9);
+    document.setFont("helvetica", "normal");
+
+    for (const [label, value] of exportFields(application)) {
+      const lines = document.splitTextToSize(
+        `${label}: ${value}`,
+        pageWidth - margin * 2,
+      ) as string[];
+      if (y + lines.length * lineHeight > pageHeight - margin) {
+        document.addPage();
+        y = margin;
+      }
+      document.text(lines, margin, y);
+      y += lines.length * lineHeight;
+    }
+    y += 5;
+  }
+
+  downloadBlob(
+    document.output("blob"),
+    exportFilename("pdf"),
+  );
+}
+
 export function ApplicationTable({
   applications,
 }: {
@@ -83,6 +288,7 @@ export function ApplicationTable({
   const [sortKey, setSortKey] = useState<SortKey>("submittedAt");
   const [descending, setDescending] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   const statuses = useMemo(
     () => [...new Set(applications.map((application) => application.status))].sort(),
@@ -129,6 +335,22 @@ export function ApplicationTable({
     }
   }
 
+  async function handleExport(format: "docx" | "xlsx" | "pdf") {
+    if (exporting || visibleApplications.length === 0) return;
+    setExporting(true);
+    try {
+      if (format === "docx") await downloadDocx(visibleApplications);
+      if (format === "xlsx") await downloadExcel(visibleApplications);
+      if (format === "pdf") await downloadPdf(visibleApplications);
+      toast.success(`Downloaded ${visibleApplications.length} applicant records.`);
+    } catch (error) {
+      console.error("Could not export applicant records.", error);
+      toast.error("Could not create the download. Please try again.");
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <section className="dashboard-panel applications-panel">
       <div className="workspace-panel-heading">
@@ -137,6 +359,34 @@ export function ApplicationTable({
           <p>Review applicant details and the choices submitted with each application.</p>
         </div>
         <span className="application-count">{visibleApplications.length} shown</span>
+      </div>
+      <div className="application-export-tools" aria-label="Download applicant list">
+        <span>Download current results</span>
+        <button
+          className="button button--small button--light"
+          disabled={exporting || visibleApplications.length === 0}
+          onClick={() => void handleExport("docx")}
+          type="button"
+        >
+          DOCX
+        </button>
+        <button
+          className="button button--small button--light"
+          disabled={exporting || visibleApplications.length === 0}
+          onClick={() => void handleExport("xlsx")}
+          type="button"
+        >
+          Excel
+        </button>
+        <button
+          className="button button--small button--light"
+          disabled={exporting || visibleApplications.length === 0}
+          onClick={() => void handleExport("pdf")}
+          type="button"
+        >
+          PDF
+        </button>
+        {exporting && <span className="application-export-status" role="status">Preparing download…</span>}
       </div>
       <div className="application-table-tools">
         <label className="application-search">

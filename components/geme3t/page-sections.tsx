@@ -42,7 +42,13 @@ const testimonials = [
   },
 ];
 
-export function HomePage({ courses }: { courses: Course[] }) {
+export function HomePage({
+  courses,
+  scholarshipsEnabled,
+}: {
+  courses: Course[];
+  scholarshipsEnabled: boolean;
+}) {
   return (
     <>
       <section className="hero">
@@ -58,7 +64,8 @@ export function HomePage({ courses }: { courses: Course[] }) {
             </p>
             <div className="hero-actions">
               <Link className="button button--pulse" href="/apply">
-                Join Campus Tech Bootcamp <span aria-hidden="true">→</span>
+                {scholarshipsEnabled ? "Join Campus Tech Bootcamp" : "Enroll now"}{" "}
+                <span aria-hidden="true">→</span>
               </Link>
               <Link className="button button--light" href="/courses">
                 What you can learn <span aria-hidden="true">→</span>

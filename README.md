@@ -50,6 +50,20 @@ Administrators sign in at `/admin/sign-in`. Course and scholarship changes are
 saved to Postgres; published courses and active scholarship offers feed the
 public catalogue and application form. Submitted applications retain the
 scholarship percentage and any fixed award amount selected at submission time.
+Each applicant email can only be used for one application (case-insensitive);
+the admissions page can download its current filtered results as DOCX, Excel
+(.xlsx), or PDF.
+Applicants select from the complete international country calling-code list;
+phone numbers are validated and stored in E.164 format.
+Course images selected from the admin form are validated and uploaded to a
+public `course-images` Supabase Storage bucket using the server-only
+`SUPABASE_SERVICE_ROLE_KEY`.
+Courses can be enabled for Free Tech Bootcamp applications from their admin
+editor. Course modules can be added, ordered, and assigned access groups:
+Free Tech Bootcamp, paid learners, promo access, or all enrolled learners.
+Modules with no access group selected remain locked. The application form only
+offers bootcamp-enabled courses to applicants who choose the Free Tech Bootcamp
+path.
 
 The admin seed creates and confirms a Supabase Auth user only when the configured
 email does not already exist. It does not change an existing user's password;
@@ -69,3 +83,10 @@ pages. Application submissions are saved to `scholarship_applications` by a
 server action after the applicant accepts the terms; the action reports when
 database submission is unavailable rather than creating a local or email-only
 submission.
+
+Administrators can configure optional onboarding fields by audience in
+**Admin → Scholarships → Onboarding fields**. Applicants who skip a configured
+profile field receive a secure email sign-in link after submitting; they must
+complete the deferred fields in `/dashboard` before `/lms-redirect` opens the
+learner portal. Configure Supabase Auth's redirect URL allow-list to include
+`/auth/callback` on each deployed site.

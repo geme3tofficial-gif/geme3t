@@ -3,6 +3,7 @@
 import {
   CohortStatus,
   CourseStatus,
+  ModuleAccessType,
   Prisma,
   ScholarshipStatus,
   SessionStatus,
@@ -12,6 +13,14 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/admin-auth";
 import { getPrismaClient } from "@/lib/prisma";
+import {
+  onboardingFieldDefinitions,
+  isOnboardingAudience,
+} from "@/lib/onboarding-fields";
+import {
+  CourseImageUploadError,
+  uploadCourseImage,
+} from "@/lib/course-image-storage";
 
 function readText(formData: FormData, key: string, maxLength: number) {
   const value = formData.get(key);
@@ -35,6 +44,26 @@ function readOptionalText(
 
 function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function isCourseImageUrl(value: string) {
+  if (value.startsWith("/") && !value.startsWith("//")) return true;
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!supabaseUrl) return false;
+
+  try {
+    const imageUrl = new URL(value);
+    const configuredSupabaseUrl = new URL(supabaseUrl);
+    return (
+      imageUrl.origin === configuredSupabaseUrl.origin &&
+      imageUrl.pathname.startsWith(
+        "/storage/v1/object/public/course-images/",
+      ) &&
+      !imageUrl.search
+    );
+  } catch {
+    return false;
+  }
 }
 
 function isCourseStatus(value: unknown): value is CourseStatus {
@@ -92,15 +121,26 @@ function revalidateCoursePaths(slug?: string) {
   if (slug) revalidatePath(`/${slug}`);
 }
 
+function courseEditorPath(id?: string) {
+  return id && isUuid(id) ? `/admin/courses/${id}` : "/admin/courses/new";
+}
+
 export async function saveCourse(formData: FormData) {
   await requireAdmin();
   const id = readText(formData, "id", 36);
+  const editorPath = courseEditorPath(id ?? undefined);
   const slug = readText(formData, "slug", 80);
   const title = readText(formData, "title", 120);
   const category = readText(formData, "category", 80);
   const description = readText(formData, "description", 2000);
-  const imageUrl = readText(formData, "imageUrl", 500);
+  const existingImageUrl = readOptionalText(formData, "imageUrl", 500);
+  const rawImageFile = formData.get("imageFile");
+  const imageFile =
+    rawImageFile instanceof File && rawImageFile.size > 0
+      ? rawImageFile
+      : null;
   const durationWeeks = Number(formData.get("durationWeeks"));
+  const freeBootcampEnabled = formData.get("freeBootcampEnabled") === "on";
   const status = formData.get("status");
 
   if (
@@ -110,29 +150,56 @@ export async function saveCourse(formData: FormData) {
     !title ||
     !category ||
     !description ||
-    !imageUrl ||
-    !imageUrl.startsWith("/") ||
-    imageUrl.startsWith("//") ||
+    existingImageUrl === undefined ||
+    (existingImageUrl !== null &&
+      !isCourseImageUrl(existingImageUrl)) ||
+    (rawImageFile !== null &&
+      !(rawImageFile instanceof File)) ||
+    (rawImageFile instanceof File &&
+      rawImageFile.size > 0 &&
+      rawImageFile.size > 4 * 1024 * 1024) ||
+    (!imageFile && !existingImageUrl) ||
     !Number.isInteger(durationWeeks) ||
     durationWeeks < 1 ||
     durationWeeks > 100 ||
     !isCourseStatus(status)
   ) {
-    redirect("/admin/courses?notice=invalid-course");
+    redirect(
+      rawImageFile instanceof File &&
+        rawImageFile.size > 4 * 1024 * 1024
+        ? `${editorPath}?notice=invalid-course-image`
+        : `${editorPath}?notice=invalid-course`,
+    );
   }
 
   const duplicate = await getPrismaClient().course.findFirst({
     where: { slug, ...(id ? { NOT: { id } } : {}) },
     select: { id: true },
   });
-  if (duplicate) redirect("/admin/courses?notice=duplicate-course");
+  if (duplicate) redirect(`${editorPath}?notice=duplicate-course`);
   const existing = id
     ? await getPrismaClient().course.findUnique({
         where: { id },
         select: { publishedAt: true },
       })
     : null;
-  if (id && !existing) redirect("/admin/courses?notice=invalid-course");
+  if (id && !existing) redirect(`${editorPath}?notice=invalid-course`);
+  let imageUrl = existingImageUrl;
+  if (imageFile) {
+    try {
+      imageUrl = await uploadCourseImage(imageFile, slug);
+    } catch (error) {
+      if (error instanceof CourseImageUploadError) {
+        console.error("Course image upload failed.", error.cause ?? error.message);
+        redirect(
+          error.kind === "invalid-image"
+            ? `${editorPath}?notice=invalid-course-image`
+            : `${editorPath}?notice=course-image-upload-failed`,
+        );
+      }
+      throw error;
+    }
+  }
   const data = {
     slug,
     title,
@@ -140,6 +207,7 @@ export async function saveCourse(formData: FormData) {
     description,
     imageUrl,
     durationWeeks,
+    freeBootcampEnabled,
     status,
     publishedAt:
       status === CourseStatus.PUBLISHED
@@ -147,28 +215,31 @@ export async function saveCourse(formData: FormData) {
         : null,
   };
 
+  let savedCourse: { id: string };
   try {
-    if (id) {
-      await getPrismaClient().course.update({ where: { id }, data });
-    } else {
-      await getPrismaClient().course.create({
-        data: {
-          ...data,
-        },
-      });
-    }
+    savedCourse = id
+      ? await getPrismaClient().course.update({
+          where: { id },
+          data,
+          select: { id: true },
+        })
+      : await getPrismaClient().course.create({
+          data,
+          select: { id: true },
+        });
   } catch (error) {
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
       error.code === "P2002"
     ) {
-      redirect("/admin/courses?notice=duplicate-course");
+      redirect(`${editorPath}?notice=duplicate-course`);
     }
     throw error;
   }
 
   revalidateCoursePaths(slug);
-  redirect("/admin/courses?notice=saved-course");
+  revalidatePath(`/admin/courses/${savedCourse.id}`);
+  redirect(`/admin/courses/${savedCourse.id}?notice=saved-course`);
 }
 
 export async function archiveCourse(formData: FormData) {
@@ -193,9 +264,153 @@ export async function archiveCourse(formData: FormData) {
   redirect("/admin/courses?notice=archived-course");
 }
 
+const validModuleAccessTypes = Object.values(ModuleAccessType);
+
+function isModuleAccessType(value: unknown): value is ModuleAccessType {
+  return (
+    typeof value === "string" &&
+    validModuleAccessTypes.some((accessType) => accessType === value)
+  );
+}
+
+function readModuleAccessTypes(formData: FormData) {
+  const values = formData.getAll("accessTypes");
+  if (values.some((value) => !isModuleAccessType(value))) {
+    return null;
+  }
+
+  const selected = [...new Set(values.filter(isModuleAccessType))];
+  return selected.includes(ModuleAccessType.ALL_ENROLLED)
+    ? [ModuleAccessType.ALL_ENROLLED]
+    : selected;
+}
+
+function revalidateCourseModules(courseId: string, slug: string) {
+  revalidatePath(`/admin/courses/${courseId}`);
+  revalidatePath("/admin/courses");
+  revalidatePath(`/${slug}`);
+  revalidatePath("/apply");
+}
+
+export async function saveCourseModule(formData: FormData) {
+  await requireAdmin();
+  const courseId = readText(formData, "courseId", 36);
+  const moduleId = readText(formData, "moduleId", 36);
+  const title = readText(formData, "title", 120);
+  const description = readOptionalText(formData, "description", 2000);
+  const sortOrder = Number(formData.get("sortOrder"));
+  const accessTypes = readModuleAccessTypes(formData);
+  const editorPath =
+    courseId && isUuid(courseId) ? `/admin/courses/${courseId}` : "/admin/courses";
+
+  if (
+    !courseId ||
+    !isUuid(courseId) ||
+    (formData.has("moduleId") && (!moduleId || !isUuid(moduleId))) ||
+    !title ||
+    description === undefined ||
+    !Number.isInteger(sortOrder) ||
+    sortOrder < 1 ||
+    sortOrder > 500 ||
+    accessTypes === null
+  ) {
+    redirect(`${editorPath}?moduleNotice=invalid-module`);
+  }
+
+  const prisma = getPrismaClient();
+  const course = await prisma.course.findUnique({
+    where: { id: courseId },
+    select: { id: true, slug: true },
+  });
+  if (!course) redirect("/admin/courses?notice=invalid-course");
+
+  if (moduleId) {
+    const existingModule = await prisma.courseModule.findFirst({
+      where: { id: moduleId, courseId },
+      select: { id: true },
+    });
+    if (!existingModule) {
+      redirect(`${editorPath}?moduleNotice=invalid-module`);
+    }
+  }
+
+  try {
+    const data = {
+      title,
+      description,
+      sortOrder,
+      accessTypes,
+    };
+    if (moduleId) {
+      await prisma.courseModule.update({
+        where: { id: moduleId },
+        data,
+      });
+    } else {
+      await prisma.courseModule.create({
+        data: { ...data, courseId },
+      });
+    }
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
+      redirect(`${editorPath}?moduleNotice=duplicate-module-order`);
+    }
+    throw error;
+  }
+
+  revalidateCourseModules(course.id, course.slug);
+  redirect(`/admin/courses/${course.id}?moduleNotice=saved-module`);
+}
+
 function revalidateScholarshipPaths() {
   revalidatePath("/admin/scholarships");
   revalidatePath("/apply");
+}
+
+export async function saveScholarshipSettings(formData: FormData) {
+  await requireAdmin();
+  const scholarshipsEnabled = formData.get("scholarshipsEnabled") === "on";
+  await getPrismaClient().applicationConfig.upsert({
+    where: { id: 1 },
+    create: { id: 1, scholarshipsEnabled },
+    update: { scholarshipsEnabled },
+  });
+  revalidateScholarshipPaths();
+  redirect(
+    `/admin/scholarships?notice=${scholarshipsEnabled ? "scholarships-enabled" : "scholarships-disabled"}`,
+  );
+}
+
+export async function saveOnboardingFieldSettings(formData: FormData) {
+  await requireAdmin();
+  const settings = onboardingFieldDefinitions.map((field) => {
+    const submittedAudiences = formData
+      .getAll(field.key)
+      .filter((value): value is string => typeof value === "string")
+      .filter(isOnboardingAudience);
+    const audiences =
+      field.key === "startDate"
+        ? Array.from(new Set([...submittedAudiences, "SCHOLARSHIP" as const]))
+        : Array.from(new Set(submittedAudiences));
+    return { fieldKey: field.key, audiences };
+  });
+
+  const db = getPrismaClient();
+  await db.$transaction(
+    settings.map(({ fieldKey, audiences }) =>
+      db.onboardingFieldSetting.upsert({
+        where: { fieldKey },
+        create: { fieldKey, audiences },
+        update: { audiences },
+      }),
+    ),
+  );
+
+  revalidateScholarshipPaths();
+  redirect("/admin/scholarships?notice=onboarding-fields-saved");
 }
 
 export async function saveScholarship(formData: FormData) {
@@ -305,6 +520,11 @@ export async function saveCohort(formData: FormData) {
     typeof endsAtValue === "string" && endsAtValue.trim()
       ? readUtcDateTime(formData, "endsAt")
       : null;
+  const seatLimitValue = formData.get("seatLimit");
+  const seatLimitText =
+    typeof seatLimitValue === "string" ? seatLimitValue.trim() : undefined;
+  const seatLimit =
+    seatLimitText === "" ? null : Number(seatLimitText);
   const status = formData.get("status");
 
   if (
@@ -316,6 +536,12 @@ export async function saveCohort(formData: FormData) {
     (typeof endsAtValue !== "string" ||
       (endsAtValue.trim() !== "" && !endsAt)) ||
     (endsAt && endsAt <= startsAt) ||
+    seatLimitText === undefined ||
+    (seatLimitText !== "" &&
+      (seatLimit === null ||
+        !Number.isInteger(seatLimit) ||
+        seatLimit < 1 ||
+        seatLimit > 100000)) ||
     !isCohortStatus(status)
   ) {
     redirect("/admin/cohorts?notice=invalid-cohort");
@@ -331,11 +557,11 @@ export async function saveCohort(formData: FormData) {
     if (id) {
       await getPrismaClient().cohort.update({
         where: { id },
-        data: { courseId, name, startsAt, endsAt, status },
+        data: { courseId, name, startsAt, endsAt, seatLimit, status },
       });
     } else {
       await getPrismaClient().cohort.create({
-        data: { courseId, name, startsAt, endsAt, status },
+        data: { courseId, name, startsAt, endsAt, seatLimit, status },
       });
     }
   } catch (error) {

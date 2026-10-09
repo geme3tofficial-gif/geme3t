@@ -11,7 +11,13 @@ import {
   type ReactNode,
 } from "react";
 import { submitScholarshipApplication } from "@/app/(geme3t)/apply/actions";
-import { normalizeWhatsAppNumber } from "@/lib/phone";
+import { normalizeWhatsAppNumber, phoneCountries } from "@/lib/phone";
+import {
+  isFieldEnabled,
+  onboardingFieldDefinitions,
+  type OnboardingAudience,
+  type OnboardingFieldRule,
+} from "@/lib/onboarding-fields";
 import { toast } from "sonner";
 import { BrandedLoader } from "./branded-loader";
 
@@ -39,6 +45,11 @@ const experienceOptions = [
 
 type Answers = Record<string, string>;
 type ScholarshipOption = { label: string; value: string };
+type PromoOption = {
+  value: string;
+  courseTitle: string | null;
+  discountPercent: number;
+};
 type CohortOption = {
   value: string;
   label: string;
@@ -55,6 +66,7 @@ type ChoiceQuestion = QuestionBase & {
   kind: "choice";
   options: ChoiceOption[];
   columns?: 1 | 2 | 3;
+  required?: boolean;
 };
 type TextQuestion = QuestionBase & {
   kind: "text";
@@ -72,6 +84,7 @@ function ChoiceCards({
   onChange,
   columns = 2,
   compact = false,
+  required = true,
 }: {
   name: string;
   value: string;
@@ -79,6 +92,7 @@ function ChoiceCards({
   onChange: (name: string, value: string) => void;
   columns?: 1 | 2 | 3;
   compact?: boolean;
+  required?: boolean;
 }) {
   return (
     <div
@@ -96,7 +110,7 @@ function ChoiceCards({
               checked={value === optionValue}
               name={name}
               onChange={() => onChange(name, optionValue)}
-              required
+              required={required}
               type="radio"
               value={optionValue}
             />
@@ -152,46 +166,145 @@ function TextQuestionField({
   );
 }
 
+function PhoneQuestionField({
+  question,
+  value,
+  countryCode,
+  onChange,
+}: {
+  question: TextQuestion;
+  value: string;
+  countryCode: string;
+  onChange: (name: string, value: string) => void;
+}) {
+  return (
+    <div className="application-single-field">
+      <FieldLabel htmlFor={question.key}>
+        {question.prompt} <span>*</span>
+      </FieldLabel>
+      <div className="application-phone-input">
+        <label className="application-phone-country">
+          <span className="application-visually-hidden">Country calling code</span>
+          <select
+            aria-label="Country calling code"
+            autoComplete="tel-country-code"
+            onChange={(event) => onChange("phoneCountry", event.target.value)}
+            required
+            value={countryCode}
+          >
+            {phoneCountries.map((country) => (
+              <option
+                key={country.countryCode}
+                title={country.name}
+                value={country.countryCode}
+              >
+                {country.countryCode === "NG" ? "NGN" : country.countryCode} (+
+                {country.callingCode})
+              </option>
+            ))}
+          </select>
+        </label>
+        <input
+          autoComplete="tel-national"
+          autoFocus
+          id={question.key}
+          inputMode="tel"
+          maxLength={32}
+          name={question.key}
+          onChange={(event) => onChange(question.key, event.target.value)}
+          placeholder="Phone number"
+          required
+          type="tel"
+          value={value}
+        />
+      </div>
+    </div>
+  );
+}
+
 function makeQuestions(
   answers: Answers,
   courseOptions: string[],
+  scholarshipCourseOptions: string[],
   scholarshipOptions: ScholarshipOption[],
+  promoOptions: PromoOption[],
   cohortOptions: CohortOption[],
+  scholarshipsEnabled: boolean,
+  fieldSettings: OnboardingFieldRule[],
 ): Question[] {
-  const questions: Question[] = [
-    {
+  const scholarshipPath =
+    answers.supportType === "I'm here for the free tech bootcamp";
+  const promoPath = answers.supportType === "I have a promo code";
+  const audience: OnboardingAudience = scholarshipPath
+    ? "SCHOLARSHIP"
+    : promoPath
+      ? "PROMO"
+      : "REGULAR";
+  const selectedPromo = promoOptions.find(
+    (promo) => promo.value.toLowerCase() === answers.promoCode?.trim().toLowerCase(),
+  );
+  const availableCourseOptions = scholarshipPath
+    ? scholarshipCourseOptions
+    : selectedPromo?.courseTitle
+      ? courseOptions.filter((course) => course === selectedPromo.courseTitle)
+      : courseOptions;
+  const fieldEnabled = (key: OnboardingFieldRule["fieldKey"]) =>
+    isFieldEnabled(fieldSettings, key, audience);
+  const questions: Question[] = [{
+    key: "firstName",
+    title: "Your contact details",
+    prompt: "What should we call you?",
+    kind: "text",
+    autoComplete: "given-name",
+    maxLength: 80,
+  }];
+
+  if (scholarshipsEnabled || promoOptions.length > 0) {
+    const supportOptions: string[] = ["I want to register for a course"];
+    if (scholarshipOptions.length > 0 && scholarshipCourseOptions.length > 0) {
+      supportOptions.unshift("I'm here for the free tech bootcamp");
+    }
+    if (promoOptions.length > 0) supportOptions.push("I have a promo code");
+    if (scholarshipsEnabled) {
+      supportOptions.push("I want specialized training and mentorship");
+    }
+    questions.push({
       key: "supportType",
       title: "Choose your support",
-      prompt: "Would you like to apply for a sponsored training?",
-      hint: "Choose a sponsored scholarship or request specialized training and mentorship.",
+      prompt: scholarshipsEnabled
+        ? "How would you like to join?"
+        : "How would you like to enroll?",
+      hint: scholarshipsEnabled
+        ? "Choose a course, apply for tuition support, or enter a promo code."
+        : "Choose a course or enter a promo code.",
       kind: "choice",
-      options: [
-        "I'm here for the free tech bootcamp",
-        "I want specialized training and mentorship",
-      ],
-    },
-  ];
+      options: supportOptions,
+    });
+  }
 
-  if (answers.supportType === "I'm here for the free tech bootcamp") {
+  if (scholarshipPath && scholarshipsEnabled) {
     questions.push({
       key: "scholarship",
       title: "Choose your support",
-      prompt: "Pick a scholarship",
-      hint: "Scroll to see all scholarships. Only one scholarship can be selected.",
+      prompt: "Choose a scholarship offer",
+      hint: "Only available scholarship offers are listed.",
       kind: "choice",
       options: scholarshipOptions,
     });
   }
 
-  questions.push(
-    {
-      key: "firstName",
-      title: "Your contact details",
-      prompt: "What should we call you?",
+  if (promoPath) {
+    questions.push({
+      key: "promoCode",
+      title: "Promo enrollment",
+      prompt: "Enter your promo code",
+      hint: "We’ll apply the promotion to an eligible course.",
       kind: "text",
-      autoComplete: "given-name",
       maxLength: 80,
-    },
+    });
+  }
+
+  questions.push(
     {
       key: "lastName",
       title: "Your contact details",
@@ -213,30 +326,40 @@ function makeQuestions(
       key: "phone",
       title: "Your contact details",
       prompt: "What’s your WhatsApp number?",
-      hint: "Enter your local number; we’ll remove its leading 0 and add the country code you select. For Other, include + and your country code.",
+      hint: "Choose the country calling code, then enter your number. We’ll save it in international format.",
       kind: "text",
       inputType: "tel",
       autoComplete: "tel",
       maxLength: 32,
     },
-    {
+  );
+
+  const optionalQuestions = onboardingFieldDefinitions.filter((field) =>
+    fieldEnabled(field.key),
+  );
+  const field = (key: string) =>
+    optionalQuestions.find((candidate) => candidate.key === key);
+
+  if (field("gender")) {
+    questions.push({
       key: "gender",
       title: "A little about you",
       prompt: "What is your gender?",
       kind: "choice",
       options: ["Female", "Male", "Prefer not to say"],
-    },
-    {
+    });
+  }
+  if (field("country")) {
+    questions.push({
       key: "country",
       title: "A little about you",
       prompt: "Where are you located?",
       kind: "choice",
       options: ["Nigeria", "UK", "United States", "Ghana", "Kenya", "Canada", "Other"],
       columns: 2,
-    },
-  );
-
-  if (answers.country === "Other") {
+    });
+  }
+  if (answers.country === "Other" && field("otherCountry")) {
     questions.push({
       key: "otherCountry",
       title: "A little about you",
@@ -247,8 +370,8 @@ function makeQuestions(
     });
   }
 
-  questions.push(
-    {
+  if (field("location")) {
+    questions.push({
       key: "location",
       title: "A little about you",
       prompt: "What state or city?",
@@ -256,8 +379,10 @@ function makeQuestions(
       kind: "text",
       autoComplete: "address-level1",
       maxLength: 120,
-    },
-    {
+    });
+  }
+  if (field("status")) {
+    questions.push({
       key: "status",
       title: "Your background",
       prompt: "What best describes you today?",
@@ -271,78 +396,46 @@ function makeQuestions(
         "Unemployed",
         "Other",
       ],
-    },
-    {
-      key: "education",
-      title: "Your background",
-      prompt: "What’s your highest education level?",
-      kind: "choice",
-      options: [
-        "High School",
-        "Degree",
-        "Masters",
-        "HND",
-        "Diploma",
-        "OND",
-        "PhD",
-        "NCE",
-        "Other",
-      ],
-    },
-    {
-      key: "course",
-      title: "Your learning plan",
-      prompt: "What would you love to learn?",
-      hint: "Scroll the card to explore every course.",
-      kind: "choice",
-      options: courseOptions,
-      columns: 2,
-    },
-  );
-
-  if (answers.supportType === "I want specialized training and mentorship") {
-    questions.push(
-      {
-        key: "specializedFocus",
-        title: "Your specialized training",
-        prompt: "What would you like specialized training in?",
-        hint: "Tell us the skill, tool, or topic you want to focus on.",
-        kind: "text",
-        maxLength: 500,
-      },
-      {
-        key: "specializedGoal",
-        title: "Your specialized training",
-        prompt: "What would you like to achieve?",
-        hint: "Share the outcome you want from this training and mentorship.",
-        kind: "text",
-        maxLength: 1000,
-      },
-      {
-        key: "mentorSupport",
-        title: "Your specialized training",
-        prompt: "What kind of mentor support would help you most?",
-        kind: "choice",
-        options: [
-          "One-to-one guidance and regular check-ins",
-          "Portfolio and project feedback",
-          "Career planning and accountability",
-          "Practical help with a specific challenge",
-        ],
-      },
+    });
+  }
+  if (field("education")) {
+    const educationField = onboardingFieldDefinitions.find(
+      (candidate) => candidate.key === "education",
     );
+    if (educationField && "options" in educationField) {
+      questions.push({
+        key: "education",
+        title: "Your background",
+        prompt: educationField.prompt,
+        kind: "choice",
+        options: [...educationField.options],
+      });
+    }
   }
 
+  questions.push({
+    key: "course",
+    title: "Your learning plan",
+    prompt: "Choose a course",
+    hint: "Select the course you would like to enroll in.",
+    kind: "choice",
+    options: availableCourseOptions,
+    columns: 2,
+  });
+
   questions.push(
-    {
+    ...(field("learningMode")
+      ? [{
       key: "learningMode",
       title: "Your learning plan",
       prompt: "How would you like to learn?",
       kind: "choice",
       options: learningModes,
       columns: 2,
-    },
-    {
+      } satisfies ChoiceQuestion]
+      : []),
+    ...(field("startDate") || scholarshipPath
+      ? [{
       key: "startDate",
       title: "Your learning plan",
       prompt: "Which training cohort would you like to join?",
@@ -353,22 +446,54 @@ function makeQuestions(
       options: cohortOptions
         .filter((cohort) => cohort.courseTitle === answers.course)
         .map(({ value, label }) => ({ value, label })),
-    },
-    {
+      required: scholarshipPath,
+      } satisfies ChoiceQuestion]
+      : []),
+    ...(field("experience")
+      ? [{
       key: "experience",
       title: "Your goals",
       prompt: "How much tech experience do you have?",
       hint: "There’s a place for you, even if you’re brand new.",
       kind: "choice",
       options: experienceOptions,
-    },
-    {
+      } satisfies ChoiceQuestion]
+      : []),
+    ...(field("jobSupport")
+      ? [{
       key: "jobSupport",
       title: "Your goals",
       prompt: "Want help with job placement?",
       kind: "choice",
       options: ["Yes, definitely", "Not at the moment"],
-    },
+      } satisfies ChoiceQuestion]
+      : []),
+    ...(["specializedFocus", "specializedGoal", "mentorSupport"] as const)
+      .filter((key) => field(key))
+      .flatMap((key): Question[] => {
+        const definition = onboardingFieldDefinitions.find(
+          (candidate) => candidate.key === key,
+        );
+        if (!definition) return [];
+        return [
+          definition.kind === "choice"
+            ? {
+                key,
+                title: "Your specialized training",
+                prompt: definition.prompt,
+                kind: "choice" as const,
+                options: [...definition.options],
+              }
+            : {
+                key,
+                title: "Your specialized training",
+                prompt: definition.prompt,
+                kind: "text" as const,
+                maxLength: 1000,
+              },
+        ];
+      }),
+
     {
       key: "review",
       title: "Final check",
@@ -383,20 +508,32 @@ function makeQuestions(
 
 export function ScholarshipApplication({
   courseOptions,
+  scholarshipCourseOptions,
   scholarshipOptions,
+  promoOptions,
   cohortOptions,
+  scholarshipsEnabled,
+  fieldSettings,
 }: {
   courseOptions: string[];
+  scholarshipCourseOptions: string[];
   scholarshipOptions: ScholarshipOption[];
+  promoOptions: PromoOption[];
   cohortOptions: CohortOption[];
+  scholarshipsEnabled: boolean;
+  fieldSettings: OnboardingFieldRule[];
 }) {
   const [step, setStep] = useState(0);
   const [direction, setDirection] = useState<"forward" | "back">("forward");
   const [started, setStarted] = useState(false);
+  const [hasSwiped, setHasSwiped] = useState(false);
   const [dragX, setDragX] = useState(0);
   const [dragging, setDragging] = useState(false);
   const [autoAdvancing, setAutoAdvancing] = useState(false);
-  const [answers, setAnswers] = useState<Answers>({});
+  const [answers, setAnswers] = useState<Answers>({
+    phoneCountry: "NG",
+    supportType: scholarshipsEnabled ? "" : "SELF_FUNDED",
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submissionStatus, setSubmissionStatus] = useState<{
     success: boolean;
@@ -409,8 +546,12 @@ export function ScholarshipApplication({
   const questions = makeQuestions(
     answers,
     courseOptions,
+    scholarshipCourseOptions,
     scholarshipOptions,
+    promoOptions,
     cohortOptions,
+    scholarshipsEnabled,
+    fieldSettings,
   );
   const activeQuestion = questions[step];
   const isLastStep = activeQuestion?.kind === "review";
@@ -459,6 +600,14 @@ export function ScholarshipApplication({
     if (
       activeQuestion?.key === "startDate" &&
       activeQuestion.kind === "choice" &&
+      activeQuestion.options.length === 0 &&
+      activeQuestion.required !== false
+    ) {
+      return false;
+    }
+    if (
+      activeQuestion?.key === "course" &&
+      activeQuestion.kind === "choice" &&
       activeQuestion.options.length === 0
     ) {
       return false;
@@ -503,16 +652,16 @@ export function ScholarshipApplication({
   }
 
   function updateAnswer(name: string, value: string) {
-    if (name === "supportType") setStarted(true);
+    if (name === "supportType" || name === "firstName") setStarted(true);
     setAnswers((current) => ({
       ...current,
       [name]: value,
       ...(name === "supportType"
         ? {
             scholarship: "",
-            specializedFocus: "",
-            specializedGoal: "",
-            mentorSupport: "",
+            promoCode: "",
+            course: "",
+            startDate: "",
           }
         : {}),
       ...(name === "course" ? { startDate: "" } : {}),
@@ -554,12 +703,14 @@ export function ScholarshipApplication({
       }, 0);
       if (deltaX < 0) {
         if (step < questions.length - 1 && validateActiveStep()) {
+          setHasSwiped(true);
           queueAdvance(step + 1);
         } else {
           setDragX(0);
           setDragging(false);
         }
       } else if (step > 0) {
+        setHasSwiped(true);
         queueAdvance(step - 1);
       } else {
         setDragX(0);
@@ -660,10 +811,9 @@ export function ScholarshipApplication({
       className={`application-page${started && !submissionStatus?.success ? " application-page--started" : ""}${submissionStatus?.success ? " application-page--complete" : ""}`}
     >
       {!submissionStatus?.success &&
-        (courseOptions.length === 0 || scholarshipOptions.length === 0) && (
+        courseOptions.length === 0 && (
         <p className="application-option-warning" role="status">
-          Applications are temporarily unavailable because there are no active
-          course or scholarship offers. Please check back soon.
+          Registration is temporarily unavailable because there are no published courses. Please check back soon.
         </p>
       )}
       {submissionStatus?.success ? (
@@ -692,6 +842,17 @@ export function ScholarshipApplication({
               details have been received, and our team will be in touch with
               your next steps.
             </p>
+            <a
+              className="button application-whatsapp-link"
+              href={`/dashboard/sign-in?email=${encodeURIComponent(answers.email ?? "")}`}
+            >
+              Set up your learner dashboard
+              <span aria-hidden="true">→</span>
+            </a>
+            <p className="application-success-footnote">
+              Use your application email to receive a secure sign-in link. Any
+              profile fields you skipped can be completed in your dashboard.
+            </p>
             <div className="application-success-loader">
               <BrandedLoader />
             </div>
@@ -717,15 +878,19 @@ export function ScholarshipApplication({
       <div className="application-shell">
         <header className="application-intro">
           Join now and start<span className="eyebrow">TRANSFORMING TOMORROW TODAY</span>
-          <h1>Apply for the <span>Free Tech Bootcamp </span></h1>
+          <h1>{scholarshipsEnabled ? "Start learning with " : "Enroll with "}<span>GEME3T Academy</span></h1>
           <p>
-            Join the next cohort of the GEME3T free tech bootcamp and gain the skills, mentorship, and career support you need to launch your tech career.
+            {scholarshipsEnabled
+              ? "Choose a course and the learning support that best fits your goals."
+              : "Choose a course and take the next step in your learning journey."}
           </p>
-          <div className="application-highlights">
-            <span><strong>Up to 100%</strong> tuition support</span>
-            <span><strong>₦500,000</strong> tuition value</span>
-            <span><strong>Application Closes Nov 30, 2026</strong></span>
-          </div>
+          {scholarshipsEnabled && (
+            <div className="application-highlights">
+              <span><strong>Up to 100%</strong> tuition support</span>
+              <span><strong>₦500,000</strong> tuition value</span>
+              <span><strong>Application Closes Nov 30, 2026</strong></span>
+            </div>
+          )}
         </header>
 
         <div className="application-layout">
@@ -745,7 +910,7 @@ export function ScholarshipApplication({
           </aside>
 
           <div
-            aria-label="Scholarship application card. Swipe left to continue and right to go back."
+            aria-label={`${scholarshipsEnabled ? "Application" : "Enrollment"} card. Swipe left to continue and right to go back.`}
             className={`application-deck${dragging ? " is-dragging" : ""}${autoAdvancing ? ` is-advancing is-advancing-${direction}` : ""}${step === 0 ? " is-first-card" : ""}${isLastStep ? " is-last-card" : ""}`}
             onClickCapture={handleClickCapture}
             onKeyDown={handleKeyDown}
@@ -796,28 +961,32 @@ export function ScholarshipApplication({
                       {activeQuestion.hint && (
                         <p className="application-step-lede">{activeQuestion.hint}</p>
                       )}
-                      {activeQuestion.key === "supportType" && (
+                      {activeQuestion.key === "firstName" && !hasSwiped && (
                         <p className="application-swipe-cue">
-                          On mobile, swipe left to continue or right to go back.
+                          Swipe left to continue
+                          <span aria-hidden="true">→</span>
                         </p>
                       )}
                       {activeQuestion.kind === "choice" ? (
                         <>
                           {activeQuestion.key === "course" && (
                             <p className="application-scroll-cue">
-                              Scroll to browse courses, including Product Design (UI & UX){" "}
-                              <span aria-hidden="true">↓</span>
+                              {activeQuestion.options.length > 0
+                                ? <>Scroll to browse all available courses{" "}<span aria-hidden="true">↓</span></>
+                                : "There are currently no published courses to choose from."}
                             </p>
                           )}
                           <fieldset className="application-fieldset application-fieldset--first">
                             <legend className="application-visually-hidden">
                               {activeQuestion.prompt} *
                             </legend>
-                            {activeQuestion.key === "startDate" &&
-                            activeQuestion.options.length === 0 ? (
+                            {activeQuestion.options.length === 0 &&
+                            (activeQuestion.key !== "startDate" ||
+                              activeQuestion.required !== false) ? (
                               <p className="application-inline-note">
-                                There are no open cohorts for this course yet.
-                                Please contact the GEME3T team or check back soon.
+                                {activeQuestion.key === "course"
+                                  ? "There are currently no published courses to choose from."
+                                  : "There are no open cohorts with remaining seats for this course. Please choose another course or check back soon."}
                               </p>
                             ) : (
                               <ChoiceCards
@@ -836,11 +1005,19 @@ export function ScholarshipApplication({
                                 name={activeQuestion.key}
                                 onChange={updateAnswer}
                                 options={activeQuestion.options}
+                                required={activeQuestion.required !== false}
                                 value={answers[activeQuestion.key] ?? ""}
                               />
                             )}
                           </fieldset>
                         </>
+                      ) : activeQuestion.key === "phone" ? (
+                        <PhoneQuestionField
+                          countryCode={answers.phoneCountry ?? "NG"}
+                          onChange={updateAnswer}
+                          question={activeQuestion}
+                          value={answers.phone ?? ""}
+                        />
                       ) : (
                         <TextQuestionField
                           onChange={(value) =>
@@ -865,40 +1042,28 @@ export function ScholarshipApplication({
                         <span aria-hidden="true">↓</span>
                       </p>
                       <div className="application-review">
-                        <section>
-                          <div>
-                            <h3>Scholarship</h3>
-                          </div>
-                          {reviewAnswer(
-                            "supportType",
-                            "Support",
-                            answers.supportType,
-                          )}
-                          {answers.supportType ===
-                            "I'm here for the free tech bootcamp" &&
-                            answers.scholarship &&
-                            reviewAnswer("scholarship", "Award", answers.scholarship)}
-                          {answers.supportType ===
-                            "I want specialized training and mentorship" && (
-                            <>
-                              {reviewAnswer(
-                                "specializedFocus",
-                                "Specialization",
-                                answers.specializedFocus,
-                              )}
-                              {reviewAnswer(
-                                "specializedGoal",
-                                "Training goal",
-                                answers.specializedGoal,
-                              )}
-                              {reviewAnswer(
-                                "mentorSupport",
-                                "Mentor support",
-                                answers.mentorSupport,
-                              )}
-                            </>
-                          )}
-                        </section>
+                        {(scholarshipsEnabled || answers.promoCode) && (
+                          <section>
+                            <div>
+                              <h3>{scholarshipsEnabled ? "Support" : "Enrollment"}</h3>
+                            </div>
+                            {reviewAnswer(
+                              "supportType",
+                              "Registration type",
+                              answers.supportType === "SELF_FUNDED"
+                                ? "Regular course registration"
+                                : answers.supportType ?? "",
+                            )}
+                            {scholarshipsEnabled &&
+                              answers.supportType ===
+                              "I'm here for the free tech bootcamp" &&
+                              answers.scholarship &&
+                              reviewAnswer("scholarship", "Award", answers.scholarship)}
+                            {answers.supportType === "I have a promo code" &&
+                              answers.promoCode &&
+                              reviewAnswer("promoCode", "Promo code", answers.promoCode)}
+                          </section>
+                        )}
                         <section>
                           <div>
                             <h3>Contact</h3>
@@ -913,7 +1078,7 @@ export function ScholarshipApplication({
                               answers.country &&
                               normalizeWhatsAppNumber(
                                 answers.phone,
-                                answers.country,
+                                answers.phoneCountry ?? "NG",
                               )) ||
                               answers.phone,
                           )}
@@ -937,7 +1102,6 @@ export function ScholarshipApplication({
                             <h3>Background</h3>
                           </div>
                           {reviewAnswer("status", "Status", answers.status)}
-                          {reviewAnswer("education", "Education", answers.education)}
                         </section>
                         <section>
                           <div>
@@ -950,7 +1114,7 @@ export function ScholarshipApplication({
                             "Selected cohort",
                             cohortOptions.find(
                               (cohort) => cohort.value === answers.startDate,
-                            )?.label ?? "",
+                            )?.label ?? "No cohort selected",
                           )}
                         </section>
                         <section>
@@ -1022,10 +1186,7 @@ export function ScholarshipApplication({
                       className="application-step-button"
                       disabled={
                         isLastStep ||
-                        autoAdvancing ||
-                        (activeQuestion?.key === "startDate" &&
-                          activeQuestion.kind === "choice" &&
-                          activeQuestion.options.length === 0)
+                        autoAdvancing
                       }
                       onClick={goToNextStep}
                       type="button"

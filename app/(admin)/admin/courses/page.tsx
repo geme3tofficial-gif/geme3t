@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { CourseStatus } from "@prisma/client";
-import { archiveCourse, saveCourse } from "@/app/(admin)/admin/actions";
+import { archiveCourse } from "@/app/(admin)/admin/actions";
 import { requireAdmin } from "@/lib/admin-auth";
 import { getPrismaClient } from "@/lib/prisma";
 
@@ -11,97 +12,11 @@ export const metadata: Metadata = {
 const notices: Record<string, string> = {
   "saved-course": "Course saved.",
   "archived-course": "Course archived and removed from public listings.",
-  "duplicate-course": "That URL slug is already in use.",
   "invalid-course": "Check the course details and try again.",
 };
 
-function CourseFields({
-  course,
-}: {
-  course?: {
-    id: string;
-    slug: string;
-    title: string;
-    category: string;
-    description: string;
-    imageUrl: string | null;
-    durationWeeks: number;
-    status: CourseStatus;
-  };
-}) {
-  return (
-    <>
-      {course && <input name="id" type="hidden" value={course.id} />}
-      <label>
-        Course name
-        <input defaultValue={course?.title} maxLength={120} name="title" required />
-      </label>
-      <label>
-        URL slug
-        <input
-          defaultValue={course?.slug}
-          maxLength={80}
-          name="slug"
-          pattern="[a-z0-9]+(-[a-z0-9]+)*"
-          placeholder="course-name"
-          required
-        />
-      </label>
-      <label>
-        Category
-        <input
-          defaultValue={course?.category}
-          maxLength={80}
-          name="category"
-          required
-        />
-      </label>
-      <label>
-        Duration (weeks)
-        <input
-          defaultValue={course?.durationWeeks ?? 16}
-          max={100}
-          min={1}
-          name="durationWeeks"
-          required
-          type="number"
-        />
-      </label>
-      <label className="admin-form-wide">
-        Description
-        <textarea
-          defaultValue={course?.description}
-          maxLength={2000}
-          name="description"
-          required
-          rows={3}
-        />
-      </label>
-      <label className="admin-form-wide">
-        Course image URL
-        <input
-          defaultValue={course?.imageUrl ?? ""}
-          maxLength={500}
-          name="imageUrl"
-          placeholder="/frontend/wp-content/uploads/..."
-          required
-        />
-      </label>
-      <label>
-        Listing status
-        <select defaultValue={course?.status ?? CourseStatus.PUBLISHED} name="status">
-          <option value={CourseStatus.DRAFT}>Draft</option>
-          <option value={CourseStatus.PUBLISHED}>Published</option>
-          <option value={CourseStatus.ARCHIVED}>Archived</option>
-        </select>
-      </label>
-      <div className="admin-form-actions">
-        <button className="button button--small" type="submit">
-          {course ? "Save course" : "Add course"}
-        </button>
-      </div>
-    </>
-  );
+function readableStatus(status: CourseStatus) {
+  return status.charAt(0) + status.slice(1).toLowerCase();
 }
 
 export default async function AdminCoursesPage({
@@ -113,6 +28,16 @@ export default async function AdminCoursesPage({
   const [courses, query] = await Promise.all([
     getPrismaClient().course.findMany({
       orderBy: [{ status: "asc" }, { title: "asc" }],
+      select: {
+        id: true,
+        slug: true,
+        title: true,
+        category: true,
+        imageUrl: true,
+        durationWeeks: true,
+        freeBootcampEnabled: true,
+        status: true,
+      },
     }),
     searchParams,
   ]);
@@ -123,48 +48,92 @@ export default async function AdminCoursesPage({
         <div>
           <span className="eyebrow">Admin tools · catalogue</span>
           <h1>Manage courses</h1>
-          <p>Edit the programmes shown on the public site and application form.</p>
+          <p>Review and manage the programmes shown on the public site and application form.</p>
         </div>
+        <Link className="button button--small" href="/admin/courses/new">
+          Add a course
+        </Link>
       </div>
       {query.notice && notices[query.notice] && (
         <p className="admin-notice" role="status">{notices[query.notice]}</p>
       )}
-      <section className="dashboard-panel admin-editor-panel">
+      <section className="dashboard-panel courses-table-panel" aria-label="Course records">
         <div className="workspace-panel-heading">
           <div>
-            <h2>Add a course</h2>
-            <p>Published courses appear in the public catalogue and application choices.</p>
+            <h2>Course catalogue</h2>
+            <p>{courses.length} {courses.length === 1 ? "course" : "courses"} total</p>
           </div>
         </div>
-        <form action={saveCourse} className="admin-edit-form">
-          <CourseFields />
-        </form>
-      </section>
-      <section className="admin-record-list" aria-label="Course records">
-        {courses.map((course) => (
-          <article className="dashboard-panel admin-editor-panel" key={course.id}>
-            <div className="workspace-panel-heading">
-              <div>
-                <h2>{course.title}</h2>
-                <p>{course.category} · {course.durationWeeks} weeks · {course.status.toLowerCase()}</p>
-              </div>
-              <form action={archiveCourse}>
-                <input name="id" type="hidden" value={course.id} />
-                <input name="slug" type="hidden" value={course.slug} />
-                <button
-                  className="button button--small button--light"
-                  disabled={course.status === CourseStatus.ARCHIVED}
-                  type="submit"
-                >
-                  Archive
-                </button>
-              </form>
-            </div>
-            <form action={saveCourse} className="admin-edit-form">
-              <CourseFields course={course} />
-            </form>
-          </article>
-        ))}
+        <div className="workspace-table-wrap">
+          <table className="workspace-table courses-table">
+            <thead>
+              <tr>
+                <th scope="col">Course</th>
+                <th scope="col">Category</th>
+                <th scope="col">Duration</th>
+                <th scope="col">Bootcamp</th>
+                <th scope="col">Status</th>
+                <th scope="col"><span className="application-visually-hidden">Actions</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              {courses.length === 0 ? (
+                <tr>
+                  <td className="courses-table-empty" colSpan={6}>
+                    No courses yet. Add a course to start building the catalogue.
+                  </td>
+                </tr>
+              ) : (
+                courses.map((course) => (
+                  <tr key={course.id}>
+                    <td>
+                      <div className="course-table-name">
+                        {course.imageUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img alt="" src={course.imageUrl} />
+                        ) : (
+                          <span aria-hidden="true" className="course-table-placeholder">C</span>
+                        )}
+                        <div>
+                          <Link href={`/admin/courses/${course.id}`}>{course.title}</Link>
+                          <span>{course.slug}</span>
+                        </div>
+                      </div>
+                    </td>
+                    <td>{course.category}</td>
+                    <td>{course.durationWeeks} weeks</td>
+                    <td>
+                      {course.freeBootcampEnabled ? (
+                        <span className="workspace-status workspace-status--active">Available</span>
+                      ) : (
+                        <span className="courses-table-unavailable">—</span>
+                      )}
+                    </td>
+                    <td>
+                      <span className={`workspace-status${course.status === CourseStatus.PUBLISHED ? " workspace-status--active" : ""}`}>
+                        {readableStatus(course.status)}
+                      </span>
+                    </td>
+                    <td className="courses-table-actions">
+                      <Link className="text-link" href={`/admin/courses/${course.id}`}>
+                        Edit
+                      </Link>
+                      {course.status !== CourseStatus.ARCHIVED && (
+                        <form action={archiveCourse}>
+                          <input name="id" type="hidden" value={course.id} />
+                          <input name="slug" type="hidden" value={course.slug} />
+                          <button className="courses-table-archive" type="submit">
+                            Archive
+                          </button>
+                        </form>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </section>
     </>
   );

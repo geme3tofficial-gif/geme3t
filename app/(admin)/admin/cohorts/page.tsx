@@ -28,6 +28,7 @@ function CohortFields({
     name: string;
     startsAt: Date;
     endsAt: Date | null;
+    seatLimit: number | null;
     status: CohortStatus;
   };
   courses: { id: string; title: string }[];
@@ -66,6 +67,17 @@ function CohortFields({
         />
       </label>
       <label>
+        Seat limit (optional)
+        <input
+          defaultValue={cohort?.seatLimit ?? ""}
+          max={100000}
+          min={1}
+          name="seatLimit"
+          placeholder="Unlimited"
+          type="number"
+        />
+      </label>
+      <label>
         Cohort status
         <select defaultValue={cohort?.status ?? CohortStatus.PLANNED} name="status">
           <option value={CohortStatus.PLANNED}>Planned</option>
@@ -76,7 +88,7 @@ function CohortFields({
         </select>
       </label>
       <p className="admin-schedule-hint admin-form-wide">
-        Only future cohorts marked “Open for applications” appear in the application start-date choices. Enter times in UTC.
+        Only future cohorts marked “Open for applications” appear in the application choices. Set a seat limit to stop scholarship applications when full; leave blank for no limit. Enter times in UTC.
       </p>
       <div className="admin-form-actions">
         <button className="button button--small" type="submit">
@@ -101,7 +113,16 @@ export default async function AdminCohortsPage({
     getPrismaClient().cohort.findMany({
       include: {
         course: { select: { title: true } },
-        _count: { select: { sessions: true, applications: true } },
+        _count: {
+          select: {
+            sessions: true,
+            applications: {
+              where: {
+                status: { in: ["SUBMITTED", "UNDER_REVIEW", "ACCEPTED"] },
+              },
+            },
+          },
+        },
       },
       orderBy: [{ startsAt: "desc" }, { name: "asc" }],
     }),
@@ -144,7 +165,7 @@ export default async function AdminCohortsPage({
                   <div>
                     <h2>{cohort.name}</h2>
                     <p>
-                      {cohort.course.title} · {cohort.startsAt.toISOString().replace("T", " ").slice(0, 16)} UTC · {cohort.status.toLowerCase()} · {cohort._count.sessions} sessions · {cohort._count.applications} applicants
+                      {cohort.course.title} · {cohort.startsAt.toISOString().replace("T", " ").slice(0, 16)} UTC · {cohort.status.toLowerCase()} · {cohort._count.sessions} sessions · {cohort._count.applications} applicants · {cohort.seatLimit === null ? "unlimited seats" : `${Math.max(0, cohort.seatLimit - cohort._count.applications)} seats left of ${cohort.seatLimit}`}
                     </p>
                   </div>
                 </div>
@@ -156,6 +177,7 @@ export default async function AdminCohortsPage({
                       name: cohort.name,
                       startsAt: cohort.startsAt,
                       endsAt: cohort.endsAt,
+                      seatLimit: cohort.seatLimit,
                       status: cohort.status,
                     }}
                     courses={courses}
