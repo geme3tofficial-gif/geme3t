@@ -453,13 +453,11 @@
   display: block;
   box-sizing: border-box;
   height: 100%;
-  border: 1px solid #dce7df;
-  border-radius: 30px;
-  padding: 10px;
-  background: linear-gradient(145deg, #f9fbf9, #edf3ee);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.95),
-    0 20px 48px rgba(38, 60, 47, 0.12);
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .application-page--started .application-deck {
@@ -4195,13 +4193,13 @@ img {
   }
 
   .application-phone-country {
-    flex-basis: 46%;
+    flex: 0 0 82px;
     min-width: 0;
   }
 
   .application-phone-country select {
-    padding-inline: 8px;
-    font-size: 0.78rem;
+    padding-inline: 6px;
+    font-size: 0.68rem;
   }
 
   .application-intro {
@@ -4245,46 +4243,85 @@ img {
 
   .application-page--started .application-deck::before,
   .application-page--started .application-deck::after {
-    top: 8px;
-    right: auto;
-    bottom: -8px;
+    display: none;
+  }
+
+  .application-page--started .application-card-preview {
+    position: absolute;
+    z-index: 0;
+    top: 50%;
     left: 50%;
+    display: block;
+    box-sizing: border-box;
     width: min(70vw, 320px);
-    border-width: 2px;
-    background: #fff5f6;
-    box-shadow: 0 15px 36px rgba(230, 0, 31, 0.16);
+    height: min(600px, calc(100dvh - 280px));
+    max-height: min(600px, calc(100dvh - 280px));
+    overflow: hidden;
+    border: 0;
+    border-radius: 22px;
+    padding: 31px 23px;
+    background: linear-gradient(145deg, #fff3f5, #ffe7eb);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.95),
+      0 30px 48px rgba(57, 25, 33, 0.24),
+      0 10px 26px rgba(230, 0, 31, 0.2);
+    color: #c6001b;
+    opacity: 0.72;
+    pointer-events: none;
     transition:
       transform 260ms cubic-bezier(0.22, 1, 0.36, 1),
       opacity 220ms ease;
   }
 
-  .application-page--started .application-deck::before {
-    border-color: #e4e9e5;
-    background: #f7faf7;
-    box-shadow: 0 15px 36px rgba(35, 54, 42, 0.12);
-    justify-content: flex-end;
-    padding-right: 8px;
-    content: "‹";
-    font-size: 1.5rem;
-    transform: translateX(-122%) translateY(8px) rotate(-2.5deg);
+  .application-page--started .application-card-preview--previous {
+    transform: translate(calc(-112% + var(--application-drag-offset, 0px)), -50%)
+      rotate(-2deg) scale(0.82);
   }
 
-  .application-page--started .application-deck::after {
-    border-color: rgba(230, 0, 31, 0.4);
-    justify-content: flex-start;
-    padding-left: 8px;
-    content: "›";
-    font-size: 1.5rem;
-    transform: translateX(22%) translateY(-6px) rotate(2.5deg);
+  .application-page--started .application-card-preview--next {
+    transform: translate(calc(12% + var(--application-drag-offset, 0px)), -50%)
+      rotate(2deg) scale(0.82);
   }
 
-  .application-page--started .application-deck.is-dragging::before {
-    transform: translateX(calc(-122% + var(--application-drag-offset, 0px))) translateY(8px) rotate(-2.5deg);
-    transition: none;
+  .application-page--started .application-card-preview span {
+    position: absolute;
+    top: 30px;
+    left: 47%;
+    display: block;
+    color: rgba(198, 0, 27, 0.48);
+    font-size: 0.58rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
   }
 
-  .application-page--started .application-deck.is-dragging::after {
-    transform: translateX(calc(22% + var(--application-drag-offset, 0px))) translateY(-6px) rotate(2.5deg);
+  .application-page--started .application-card-preview p {
+    position: absolute;
+    top: 61px;
+    left: 47%;
+    display: -webkit-box;
+    width: 64%;
+    overflow: hidden;
+    margin: 0;
+    color: rgba(93, 35, 47, 0.42);
+    font-size: 0.8rem;
+    font-weight: 700;
+    line-height: 1.2;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    mask-image: linear-gradient(to bottom, #000 30%, transparent 100%);
+    -webkit-mask-image: linear-gradient(to bottom, #000 30%, transparent 100%);
+  }
+
+  .application-page--started .application-card-preview--next span,
+  .application-page--started .application-card-preview--next p {
+    left: 35%;
+  }
+
+  .application-page--started .application-deck.is-dragging
+    .application-card-preview--previous,
+  .application-page--started .application-deck.is-dragging
+    .application-card-preview--next {
     transition: none;
   }
 
@@ -4448,9 +4485,9 @@ img {
     border: 2px solid #eadadd;
     border-radius: 22px;
     box-shadow:
-      0 2px 0 rgba(255, 255, 255, 0.95),
-      0 24px 52px rgba(55, 30, 36, 0.2),
-      0 7px 16px rgba(0, 0, 0, 0.08);
+      0 2px 0 rgba(255, 255, 255, 0.98),
+      0 34px 68px rgba(42, 24, 29, 0.28),
+      0 12px 26px rgba(230, 0, 31, 0.1);
   }
 
   .application-form-footer .button {

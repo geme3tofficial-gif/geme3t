@@ -925,6 +925,24 @@ export function ScholarshipApplication({
             } as CSSProperties}
             tabIndex={0}
           >
+            {step > 0 && (
+              <div
+                aria-hidden="true"
+                className="application-card-preview application-card-preview--previous"
+              >
+                <span>Previous</span>
+                <p>{questions[step - 1]?.prompt}</p>
+              </div>
+            )}
+            {step < questions.length - 1 && (
+              <div
+                aria-hidden="true"
+                className="application-card-preview application-card-preview--next"
+              >
+                <span>Next</span>
+                <p>{questions[step + 1]?.prompt}</p>
+              </div>
+            )}
             <div className="application-card">
               <nav aria-label="Application progress" className="application-progress">
                 <div
@@ -1203,8 +1221,8 @@ export function ScholarshipApplication({
                       {isSubmitting
                         ? "Submitting…"
                         : submissionStatus?.success
-                          ? "Application submitted"
-                          : "Submit application"}
+                          ? "submitted"
+                          : "Submit"}
                     </button>
                   ) : (
                     <span aria-hidden="true" className="application-swipe-direction">←</span>
