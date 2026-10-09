@@ -13,6 +13,7 @@ import {
 import { submitScholarshipApplication } from "@/app/(geme3t)/apply/actions";
 import { normalizeWhatsAppNumber } from "@/lib/phone";
 import { toast } from "sonner";
+import { BrandedLoader } from "./branded-loader";
 
 const learningModes = [
   { label: "Online", value: "Online" },
@@ -655,13 +656,64 @@ export function ScholarshipApplication({
   }
 
   return (
-    <section className={`application-page${started ? " application-page--started" : ""}`}>
-      {(courseOptions.length === 0 || scholarshipOptions.length === 0) && (
+    <section
+      className={`application-page${started && !submissionStatus?.success ? " application-page--started" : ""}${submissionStatus?.success ? " application-page--complete" : ""}`}
+    >
+      {!submissionStatus?.success &&
+        (courseOptions.length === 0 || scholarshipOptions.length === 0) && (
         <p className="application-option-warning" role="status">
           Applications are temporarily unavailable because there are no active
           course or scholarship offers. Please check back soon.
         </p>
       )}
+      {submissionStatus?.success ? (
+        <div className="application-success">
+          <div aria-hidden="true" className="application-confetti">
+            {Array.from({ length: 32 }, (_, index) => (
+              <span
+                key={index}
+                style={{
+                  left: `${(index * 37) % 100}%`,
+                  animationDelay: `${-(index % 9) * 0.27}s`,
+                  animationDuration: `${2.7 + (index % 5) * 0.24}s`,
+                  transform: `rotate(${(index * 47) % 360}deg)`,
+                }}
+              />
+            ))}
+          </div>
+          <div className="application-success-content">
+            <div aria-hidden="true" className="application-success-icon">
+              ✓
+            </div>
+            <span className="eyebrow">Your next chapter starts now</span>
+            <h1>Congratulations, {answers.firstName}!</h1>
+            <p className="application-success-lede">
+              You&apos;ve completed your GEME3T application onboarding. Your
+              details have been received, and our team will be in touch with
+              your next steps.
+            </p>
+            <div className="application-success-loader">
+              <BrandedLoader />
+            </div>
+            <p className="application-success-community">
+              Stay connected with fellow learners and get the latest academy
+              updates in our WhatsApp channel.
+            </p>
+            <a
+              className="button application-whatsapp-link"
+              href="https://whatsapp.com/channel/0029VbDsGoFI1rcksIY4Se2W"
+              rel="noreferrer"
+              target="_blank"
+            >
+              Join the GEME3T WhatsApp channel
+              <span aria-hidden="true">↗</span>
+            </a>
+            <p className="application-success-footnote">
+              Joining the channel is optional and does not affect your application.
+            </p>
+          </div>
+        </div>
+      ) : (
       <div className="application-shell">
         <header className="application-intro">
           Join now and start<span className="eyebrow">TRANSFORMING TOMORROW TODAY</span>
@@ -1005,6 +1057,7 @@ export function ScholarshipApplication({
           Your application details are sent securely to GEME3T when you submit.
         </p>
       </div>
+      )}
     </section>
   );
 }

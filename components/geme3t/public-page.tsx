@@ -153,7 +153,7 @@ function CoursesPage({ courses }: { courses: Course[] }) {
       <PageHero
         description="Practical, beginner-friendly programmes designed to help you grow your skills and move forward in your career."
         eyebrow="Find your next skill"
-        title="Explore our courses"
+        title="Pick a programme that fits your goals"
       />
       <section className="section container">
         <div className="course-grid">
