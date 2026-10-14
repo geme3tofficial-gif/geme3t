@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { WorkspaceSectionPage, getWorkspaceSection } from "@/components/geme3t/workspace-section-page";
+import { requireCourseEditor } from "@/lib/course-editor-auth";
 
 const sections = ["classes", "learners", "schedule", "resources"];
 
@@ -23,7 +24,8 @@ export async function generateMetadata({
 export default async function TeacherSectionRoute({
   params,
 }: TeacherSectionProps) {
+  const { userId } = await requireCourseEditor();
   const { section } = await params;
   if (!getWorkspaceSection("Teacher", section)) notFound();
-  return <WorkspaceSectionPage role="Teacher" section={section} />;
+  return <WorkspaceSectionPage role="Teacher" section={section} userId={userId} />;
 }

@@ -11,6 +11,7 @@ function toCourse(course: {
   description: string;
   imageUrl: string | null;
   durationWeeks: number;
+  modules?: Course["modules"];
 }): Course {
   return {
     slug: course.slug,
@@ -19,6 +20,7 @@ function toCourse(course: {
     description: course.description,
     image: course.imageUrl ?? "/images/banner.png",
     duration: `${course.durationWeeks} weeks`,
+    ...(course.modules ? { modules: course.modules } : {}),
   };
 }
 
@@ -49,6 +51,38 @@ export async function getPublishedCourseBySlug(slug: string) {
       description: true,
       imageUrl: true,
       durationWeeks: true,
+      modules: {
+        where: { lessons: { some: { isPublished: true } } },
+        orderBy: { sortOrder: "asc" },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          sortOrder: true,
+          lessons: {
+            where: { isPublished: true },
+            orderBy: { sortOrder: "asc" },
+            select: {
+              id: true,
+              title: true,
+              sortOrder: true,
+              isPublished: true,
+              contentItems: {
+                orderBy: { sortOrder: "asc" },
+                select: {
+                  id: true,
+                  kind: true,
+                  title: true,
+                  body: true,
+                  url: true,
+                  fileName: true,
+                  sortOrder: true,
+                },
+              },
+            },
+          },
+        },
+      },
     },
   });
 

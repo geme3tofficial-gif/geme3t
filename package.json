@@ -13,6 +13,7 @@
     "db:seed": "prisma db seed",
     "db:seed:admin": "node --env-file=.env prisma/seed-admin.mjs",
     "db:seed:demo-users": "node --env-file=.env prisma/seed-demo-users.mjs",
+    "db:seed:curricula": "node --env-file=.env prisma/seed-course-curricula.mjs",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy"
   },

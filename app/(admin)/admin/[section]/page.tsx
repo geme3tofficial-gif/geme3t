@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { WorkspaceSectionPage, getWorkspaceSection } from "@/components/geme3t/workspace-section-page";
+import { requireAdmin } from "@/lib/admin-auth";
 
 const sections = ["courses", "learners", "teachers", "reports"];
 
@@ -15,6 +16,7 @@ export function generateStaticParams() {
 export async function generateMetadata({
   params,
 }: AdminSectionProps): Promise<Metadata> {
+  await requireAdmin();
   const { section } = await params;
   const content = getWorkspaceSection("Administrator", section);
   return content ? { title: content.title } : {};

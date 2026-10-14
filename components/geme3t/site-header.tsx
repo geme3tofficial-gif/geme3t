@@ -27,8 +27,8 @@ export async function SiteHeader() {
               {link.label}
             </Link>
           ))}
-          <Link className="button button--small" href="/dashboard">
-            Student portal
+          <Link className="button button--small" href="/sign-in">
+            Sign in
           </Link>
         </nav>
         <MobileSiteNav scholarshipsEnabled={config?.scholarshipsEnabled ?? true} />

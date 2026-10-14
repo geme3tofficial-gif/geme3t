@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { CourseStatus } from "@prisma/client";
-import { archiveCourse } from "@/app/(admin)/admin/actions";
+import { CourseStatus, CourseSuggestionStatus } from "@prisma/client";
+import {
+  archiveCourse,
+  reviewCourseSuggestion,
+} from "@/app/(admin)/admin/actions";
 import { requireAdmin } from "@/lib/admin-auth";
 import { getPrismaClient } from "@/lib/prisma";
 
@@ -13,6 +16,12 @@ const notices: Record<string, string> = {
   "saved-course": "Course saved.",
   "archived-course": "Course archived and removed from public listings.",
   "invalid-course": "Check the course details and try again.",
+  "invalid-suggestion": "That course proposal could not be reviewed.",
+  "suggestion-already-reviewed":
+    "That course proposal has already been reviewed.",
+  "suggestion-approved":
+    "Course proposal approved and published to the course catalogue.",
+  "suggestion-rejected": "Course proposal rejected.",
 };
 
 function readableStatus(status: CourseStatus) {
@@ -25,8 +34,9 @@ export default async function AdminCoursesPage({
   searchParams: Promise<{ notice?: string }>;
 }) {
   await requireAdmin();
-  const [courses, query] = await Promise.all([
-    getPrismaClient().course.findMany({
+  const prisma = getPrismaClient();
+  const [courses, suggestions, query] = await Promise.all([
+    prisma.course.findMany({
       orderBy: [{ status: "asc" }, { title: "asc" }],
       select: {
         id: true,
@@ -37,6 +47,21 @@ export default async function AdminCoursesPage({
         durationWeeks: true,
         freeBootcampEnabled: true,
         status: true,
+      },
+    }),
+    prisma.courseSuggestion.findMany({
+      where: { status: CourseSuggestionStatus.PENDING },
+      orderBy: { createdAt: "asc" },
+      select: {
+        id: true,
+        title: true,
+        category: true,
+        description: true,
+        durationWeeks: true,
+        createdAt: true,
+        suggestedBy: {
+          select: { firstName: true, lastName: true, email: true },
+        },
       },
     }),
     searchParams,
@@ -57,6 +82,97 @@ export default async function AdminCoursesPage({
       {query.notice && notices[query.notice] && (
         <p className="admin-notice" role="status">{notices[query.notice]}</p>
       )}
+      <section
+        className="dashboard-panel courses-table-panel course-suggestions-panel"
+        aria-label="Course proposals awaiting review"
+      >
+        <div className="workspace-panel-heading">
+          <div>
+            <h2>Teacher course proposals</h2>
+            <p>
+              Approving a proposal creates a published course in the shared
+              catalogue. Assign teaching access separately through a cohort.
+            </p>
+          </div>
+          <span className="workspace-count">
+            {suggestions.length} awaiting review
+          </span>
+        </div>
+        <div className="workspace-table-wrap">
+          <table className="workspace-table course-suggestions-table">
+            <thead>
+              <tr>
+                <th scope="col">Proposal</th>
+                <th scope="col">Teacher</th>
+                <th scope="col">Submitted</th>
+                <th scope="col"><span className="application-visually-hidden">Review actions</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              {suggestions.length === 0 ? (
+                <tr>
+                  <td className="courses-table-empty" colSpan={4}>
+                    There are no course proposals awaiting review.
+                  </td>
+                </tr>
+              ) : (
+                suggestions.map((suggestion) => {
+                  const teacherName =
+                    `${suggestion.suggestedBy.firstName} ${suggestion.suggestedBy.lastName}`.trim();
+                  return (
+                    <tr key={suggestion.id}>
+                      <td>
+                        <strong>{suggestion.title}</strong>
+                        <span className="course-suggestion-meta">
+                          {suggestion.category} · {suggestion.durationWeeks} weeks
+                        </span>
+                        <p className="course-suggestion-description">
+                          {suggestion.description}
+                        </p>
+                      </td>
+                      <td>
+                        {teacherName || suggestion.suggestedBy.email || "Teacher"}
+                        {teacherName && suggestion.suggestedBy.email && (
+                          <span className="course-suggestion-meta">
+                            {suggestion.suggestedBy.email}
+                          </span>
+                        )}
+                      </td>
+                      <td>
+                        {suggestion.createdAt.toLocaleDateString("en", {
+                          dateStyle: "medium",
+                          timeZone: "UTC",
+                        })}
+                      </td>
+                      <td className="courses-table-actions">
+                        <form action={reviewCourseSuggestion}>
+                          <input name="id" type="hidden" value={suggestion.id} />
+                          <button
+                            className="button button--small"
+                            name="decision"
+                            type="submit"
+                            value="approve"
+                          >
+                            Approve & publish
+                          </button>
+                          <button
+                            className="course-suggestion-reject"
+                            name="decision"
+                            type="submit"
+                            value="reject"
+                          >
+                            Reject
+                          </button>
+                        </form>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
       <section className="dashboard-panel courses-table-panel" aria-label="Course records">
         <div className="workspace-panel-heading">
           <div>

@@ -115,8 +115,7 @@ export default async function DashboardPage() {
           <span className="eyebrow">Learner workspace</span>
           <h1>Welcome, {application.firstName}</h1>
           <p>
-            Your learner profile and enrollment details are ready to manage
-            here.
+            Review your application and learning details here.
           </p>
         </div>
         <Link className="button button--small" href="/courses">
@@ -141,13 +140,10 @@ export default async function DashboardPage() {
             <h3>{application.courseName}</h3>
             <p>{application.email} · {application.phone}</p>
           </div>
-          <span className="progress-value">
-            {missingKeys.length === 0 ? "Profile complete" : "Profile incomplete"}
-          </span>
         </div>
       </section>
 
-      {missingKeys.length > 0 ? (
+      {missingKeys.length > 0 && (
         <section className="dashboard-panel learner-completion-panel">
           <span className="eyebrow">One more step</span>
           <h2>Complete your learner profile</h2>
@@ -161,15 +157,6 @@ export default async function DashboardPage() {
             fields={fields}
             initialValues={initialValues}
           />
-        </section>
-      ) : (
-        <section className="dashboard-panel learner-access-panel">
-          <span className="eyebrow">You’re ready</span>
-          <h2>Your learner profile is complete</h2>
-          <p>You can now continue to the GEME3T learning portal.</p>
-          <Link className="button button--small" href="/lms-redirect">
-            Open learning portal <span aria-hidden="true">→</span>
-          </Link>
         </section>
       )}
     </>

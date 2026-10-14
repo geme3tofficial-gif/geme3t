@@ -20,6 +20,12 @@ enum CourseStatus {
   ARCHIVED
 }
 
+enum CourseSuggestionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum ScholarshipStatus {
   ACTIVE
   INACTIVE
@@ -61,12 +67,24 @@ enum CohortStatus {
   CANCELLED
 }
 
+enum TeacherCohortApplicationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum LessonKind {
   VIDEO
   ARTICLE
   QUIZ
   ASSIGNMENT
   LIVE
+}
+
+enum LessonContentKind {
+  TEXT
+  VIDEO
+  ATTACHMENT
 }
 
 enum ModuleAccessType {
@@ -111,6 +129,10 @@ model UserProfile {
   enrollments         Enrollment[]
   teachingAssignments CohortTeachingAssignment[]
   teachingSessions    LiveSession[]
+  courseSuggestions   CourseSuggestion[] @relation("CourseSuggestionSubmitter")
+  reviewedSuggestions CourseSuggestion[] @relation("CourseSuggestionReviewer")
+  cohortApplications  TeacherCohortApplication[] @relation("CohortApplicationTeacher")
+  reviewedCohortApplications TeacherCohortApplication[] @relation("CohortApplicationReviewer")
   createdCampaigns    PromoCampaign[]            @relation("CampaignCreator")
   promoRedemptions    PromoRedemption[]
 
@@ -136,9 +158,32 @@ model Course {
   modules      CourseModule[]
   enrollments  Enrollment[]
   campaigns    PromoCampaign[]
+  suggestions  CourseSuggestion[]
 
   @@index([status, category])
   @@map("courses")
+}
+
+model CourseSuggestion {
+  id             String                 @id @default(uuid()) @db.Uuid
+  title          String
+  category       String
+  description    String                 @db.Text
+  durationWeeks  Int                    @map("duration_weeks")
+  status         CourseSuggestionStatus @default(PENDING)
+  suggestedById  String                 @map("suggested_by_id") @db.Uuid
+  suggestedBy    UserProfile            @relation("CourseSuggestionSubmitter", fields: [suggestedById], references: [id], onDelete: Cascade)
+  reviewedById   String?                @map("reviewed_by_id") @db.Uuid
+  reviewedBy     UserProfile?           @relation("CourseSuggestionReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  courseId       String?                @unique @map("course_id") @db.Uuid
+  course         Course?                @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  reviewedAt     DateTime?              @map("reviewed_at") @db.Timestamptz(6)
+  createdAt      DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime               @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([status, createdAt])
+  @@index([suggestedById, createdAt])
+  @@map("course_suggestions")
 }
 
 model Scholarship {
@@ -241,6 +286,7 @@ model Cohort {
   teachers     CohortTeachingAssignment[]
   sessions     LiveSession[]
   applications ScholarshipApplication[]
+  teacherApplications TeacherCohortApplication[]
 
   @@unique([courseId, name])
   @@index([status, startsAt])
@@ -257,6 +303,24 @@ model CohortTeachingAssignment {
   @@id([cohortId, teacherId])
   @@index([teacherId])
   @@map("cohort_teaching_assignments")
+}
+
+model TeacherCohortApplication {
+  id           String                          @id @default(uuid()) @db.Uuid
+  cohortId     String                          @map("cohort_id") @db.Uuid
+  cohort       Cohort                          @relation(fields: [cohortId], references: [id], onDelete: Cascade)
+  teacherId    String                          @map("teacher_id") @db.Uuid
+  teacher      UserProfile                     @relation("CohortApplicationTeacher", fields: [teacherId], references: [id], onDelete: Cascade)
+  status       TeacherCohortApplicationStatus  @default(PENDING)
+  appliedAt    DateTime                        @default(now()) @map("applied_at") @db.Timestamptz(6)
+  reviewedById String?                         @map("reviewed_by_id") @db.Uuid
+  reviewedBy   UserProfile?                    @relation("CohortApplicationReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedAt   DateTime?                       @map("reviewed_at") @db.Timestamptz(6)
+
+  @@unique([cohortId, teacherId])
+  @@index([status, appliedAt])
+  @@index([teacherId, appliedAt])
+  @@map("teacher_cohort_applications")
 }
 
 model Enrollment {
@@ -314,9 +378,27 @@ model Lesson {
   updatedAt       DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   progress LessonProgress[]
+  contentItems LessonContentItem[]
 
   @@unique([moduleId, sortOrder])
   @@map("lessons")
+}
+
+model LessonContentItem {
+  id          String   @id @default(uuid()) @db.Uuid
+  lessonId    String   @map("lesson_id") @db.Uuid
+  lesson      Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  kind        LessonContentKind
+  title       String?
+  body        String?  @db.Text
+  url         String?
+  fileName    String?  @map("file_name")
+  storagePath String?  @map("storage_path")
+  sortOrder   Int      @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([lessonId, sortOrder])
+  @@map("lesson_content_items")
 }
 
 model LessonProgress {

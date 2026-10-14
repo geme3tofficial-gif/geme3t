@@ -38,6 +38,27 @@ export default async function EditCoursePage({
           description: true,
           sortOrder: true,
           accessTypes: true,
+          lessons: {
+            orderBy: { sortOrder: "asc" },
+            select: {
+              id: true,
+              title: true,
+              sortOrder: true,
+              isPublished: true,
+              contentItems: {
+                orderBy: { sortOrder: "asc" },
+                select: {
+                  id: true,
+                  kind: true,
+                  title: true,
+                  body: true,
+                  url: true,
+                  fileName: true,
+                  sortOrder: true,
+                },
+              },
+            },
+          },
         },
       },
     },
@@ -53,10 +74,14 @@ export default async function EditCoursePage({
           <h1>Edit course</h1>
           <p>Manage {course.title}, its public listing, and catalogue details.</p>
         </div>
-        <Link className="text-link" href="/admin/courses">Back to courses</Link>
+        <div className="course-editor-heading-links">
+          <Link className="text-link" href={`/teacher/courses/${course.id}/preview`}>Preview as applicant</Link>
+          <Link className="text-link" href="/admin/courses">Back to courses</Link>
+        </div>
       </div>
       <CourseEditorForm
         course={course}
+        modulePresentation="modal"
         moduleNotice={query.moduleNotice}
         modules={course.modules}
         notice={query.notice}

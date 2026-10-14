@@ -15,6 +15,8 @@ Postgres.
    database with `npm run db:migrate`.
 5. Populate the public course catalogue and current scholarship offers with
    `npm run db:seed`. The seed is repeatable and does not create fake applicants.
+   Populate the published course module outlines with `npm run db:seed:curricula`;
+   this only adds curricula to courses that do not already have modules.
 6. Set `SUPABASE_SECRET_KEY` (or `SUPABASE_SERVICE_ROLE_KEY`) and `ADMIN_EMAIL`
    in `.env`. Set `ADMIN_PASSWORD` to a unique password of at least 12 characters
    only if creating a new Auth user, then run `npm run db:seed:admin`.
@@ -46,6 +48,15 @@ SET role = 'ADMIN'
 WHERE email = 'admin@example.com';
 ```
 
+To make an existing Auth account a teacher, promote its profile in the same
+way:
+
+```sql
+UPDATE public.user_profiles
+SET role = 'TEACHER'
+WHERE email = 'teacher@example.com';
+```
+
 Administrators sign in at `/admin/sign-in`. Course and scholarship changes are
 saved to Postgres; published courses and active scholarship offers feed the
 public catalogue and application form. Submitted applications retain the
@@ -73,9 +84,13 @@ or service-role key and admin password in `.env` only.
 The demo-user seed creates confirmed Auth accounts and matching teacher/student
 profiles using `teacher.demo@geme3t.example.com` and
 `student.demo@geme3t.example.com` by default. Override them with
-`DUMMY_TEACHER_EMAIL` and `DUMMY_STUDENT_EMAIL` if needed. It does not create
-applications, enrollments, or other fake activity; repeated runs preserve the
-passwords for the managed demo users.
+`DUMMY_TEACHER_EMAIL` and `DUMMY_STUDENT_EMAIL` if needed. It generates random
+passwords unless `DUMMY_TEACHER_PASSWORD` or `DUMMY_STUDENT_PASSWORD` is set;
+configured passwords must be at least 12 characters and are never printed.
+Existing managed demo users keep their passwords unless a password is explicitly
+configured. To also create a clearly labeled, withdrawn test application for the
+student account, set `DUMMY_STUDENT_APPLICATION=true`. The seed leaves existing
+applications unchanged and creates no enrollments.
 
 The public course catalogue and application choices load from the database.
 Configure Supabase, apply the migrations, and run the seed before serving those
@@ -84,9 +99,31 @@ server action after the applicant accepts the terms; the action reports when
 database submission is unavailable rather than creating a local or email-only
 submission.
 
+Teacher course access is managed in **Admin → Cohorts**. Choose teacher accounts
+in the cohort form and save; those assignments grant access to edit and preview
+the cohort's course. Teacher course lists, class lists, learner lists, and
+upcoming sessions are read from `cohort_teaching_assignments`, `cohorts`,
+`enrollments`, and `live_sessions`. Administrator learner and teacher listings
+read `user_profiles` and their related enrollments or teaching assignments.
+Create or promote teacher profiles before assigning them; the Auth trigger
+creates new profiles with the `STUDENT` role by default.
+
+Teachers can submit course proposals from **Teacher → Course content**, choosing
+an existing published-course category or entering a new one. Proposals remain
+private until an administrator approves them in **Admin → Courses**; approval
+publishes the course in the shared catalogue but does not grant teaching access.
+Administrators manage upcoming cohorts in **Admin → Cohorts**. Teachers see
+future cohorts for published courses on their dashboard, including cohort dates,
+assigned teachers, teacher-application counts, and scheduled sessions. A teacher
+must apply to a cohort and receive administrator approval before they can edit
+its course content. Applications are reviewed in **Admin → Cohorts**.
+
 Administrators can configure optional onboarding fields by audience in
-**Admin → Scholarships → Onboarding fields**. Applicants who skip a configured
-profile field receive a secure email sign-in link after submitting; they must
-complete the deferred fields in `/dashboard` before `/lms-redirect` opens the
-learner portal. Configure Supabase Auth's redirect URL allow-list to include
-`/auth/callback` on each deployed site.
+**Admin → Scholarships → Onboarding fields**. Applicants who skip a configured profile field receive a secure email sign-in
+link after submitting; they must complete the deferred fields in `/dashboard`
+before `/lms-redirect` opens the learner portal. Students sign in with their
+application email and password at `/dashboard/sign-in`; first-time students can
+set a password at `/dashboard/setup-password`, and returning students can reset
+one at `/dashboard/reset-password`. Configure Supabase Auth's redirect URL
+allow-list to include `/auth/callback` and `/auth/reset-password` on each
+deployed site.

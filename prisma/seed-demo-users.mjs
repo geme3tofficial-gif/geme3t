@@ -12,6 +12,7 @@ const demoUsers = [
     email:
       process.env.DUMMY_TEACHER_EMAIL?.trim().toLowerCase() ||
       "teacher.demo@geme3t.example.com",
+    password: process.env.DUMMY_TEACHER_PASSWORD,
     firstName: "Demo",
     lastName: "Teacher",
   },
@@ -20,6 +21,7 @@ const demoUsers = [
     email:
       process.env.DUMMY_STUDENT_EMAIL?.trim().toLowerCase() ||
       "student.demo@geme3t.example.com",
+    password: process.env.DUMMY_STUDENT_PASSWORD,
     firstName: "Demo",
     lastName: "Student",
   },
@@ -45,6 +47,13 @@ function validateConfiguration() {
   }
   if (demoUsers[0].email === demoUsers[1].email) {
     throw new Error("Teacher and student demo accounts must use different emails.");
+  }
+  for (const demoUser of demoUsers) {
+    if (demoUser.password && demoUser.password.length < 12) {
+      throw new Error(
+        `The configured ${demoUser.role.toLowerCase()} demo password must be at least 12 characters.`,
+      );
+    }
   }
 }
 
@@ -91,7 +100,9 @@ async function main() {
       }
 
       if (!user) {
-        const password = `G3!${randomBytes(24).toString("base64url")}a9`;
+        const password =
+          demoUser.password ??
+          `G3!${randomBytes(24).toString("base64url")}a9`;
         const { data, error } = await supabase.auth.admin.createUser({
           email: demoUser.email,
           password,
@@ -110,13 +121,29 @@ async function main() {
         }
 
         user = data.user;
-        createdCredentials.push({ ...demoUser, password });
+        if (!demoUser.password) {
+          createdCredentials.push({ ...demoUser, password });
+        }
         console.info(
           `Created ${demoUser.role.toLowerCase()} demo user ${demoUser.email}.`,
         );
       } else {
+        if (demoUser.password) {
+          const { data, error } = await supabase.auth.admin.updateUserById(
+            user.id,
+            { password: demoUser.password },
+          );
+          if (error || !data.user) {
+            throw new Error(
+              `Could not set the ${demoUser.role.toLowerCase()} demo password: ${error?.message ?? "No user was returned."}`,
+            );
+          }
+          user = data.user;
+        }
         console.info(
-          `Found existing managed demo user ${demoUser.email}; its password was not changed.`,
+          demoUser.password
+            ? `Found existing managed demo user ${demoUser.email}; its configured password was updated.`
+            : `Found existing managed demo user ${demoUser.email}; its password was not changed.`,
         );
       }
 
@@ -140,6 +167,51 @@ async function main() {
       console.info(
         `Assigned ${demoUser.role} role to ${demoUser.email}.`,
       );
+
+      if (
+        demoUser.role === UserRole.STUDENT &&
+        process.env.DUMMY_STUDENT_APPLICATION === "true"
+      ) {
+        const existingApplication =
+          await prisma.scholarshipApplication.findFirst({
+            where: {
+              email: { equals: demoUser.email, mode: "insensitive" },
+            },
+            select: { id: true },
+          });
+
+        if (existingApplication) {
+          console.info(
+            `A student application already exists for ${demoUser.email}; it was left unchanged.`,
+          );
+        } else {
+          await prisma.scholarshipApplication.create({
+            data: {
+              applicantId: user.id,
+              firstName: "Demo",
+              lastName: "Student (TEST)",
+              email: demoUser.email,
+              phone: "+15555550100",
+              gender: "Not applicable (test account)",
+              country: "Test account",
+              location: "TEST - Synthetic account",
+              employmentStatus: "Not applicable (test account)",
+              educationLevel: "Not applicable (test account)",
+              scholarshipInterest: false,
+              courseName: "TEST ACCOUNT - Not a real application",
+              learningMode: "ONLINE",
+              techExperience:
+                "Synthetic test record for student sign-in; not a real application.",
+              jobPlacementSupport: false,
+              termsAcceptedAt: new Date(),
+              status: "WITHDRAWN",
+            },
+          });
+          console.info(
+            `Created a clearly labeled withdrawn test application for ${demoUser.email}.`,
+          );
+        }
+      }
     }
   } finally {
     await prisma.$disconnect();
@@ -156,7 +228,7 @@ async function main() {
     }
   } else {
     console.info(
-      "No new passwords were generated. Existing managed demo account passwords were left unchanged.",
+      "No generated passwords to display. Any explicitly configured passwords were applied without printing them.",
     );
   }
 }

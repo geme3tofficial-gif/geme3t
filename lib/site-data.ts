@@ -7,6 +7,27 @@ export type Course = {
   description: string;
   image: string;
   duration: string;
+  modules?: {
+    id: string;
+    title: string;
+    description: string | null;
+    sortOrder: number;
+    lessons: {
+      id: string;
+      title: string;
+      sortOrder: number;
+      isPublished: boolean;
+      contentItems: {
+        id: string;
+        kind: string;
+        title: string | null;
+        body: string | null;
+        url: string | null;
+        fileName: string | null;
+        sortOrder: number;
+      }[];
+    }[];
+  }[];
 };
 
 export const courses: Course[] = catalogData.courses.map(

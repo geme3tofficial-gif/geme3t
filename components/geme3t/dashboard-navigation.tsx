@@ -34,6 +34,7 @@ const navigation: Record<DashboardRole, NavigationItem[]> = {
   ],
   Teacher: [
     { href: "/teacher", icon: "⌂", label: "Overview" },
+    { href: "/teacher/courses", icon: "▤", label: "Course content" },
     { href: "/teacher/classes", icon: "▤", label: "My classes" },
     { href: "/teacher/learners", icon: "♙", label: "Learners" },
     { href: "/teacher/schedule", icon: "◷", label: "Schedule" },
@@ -102,7 +103,14 @@ export function DashboardNavigation({ role }: { role: DashboardRole }) {
   function renderLinks(onNavigate?: () => void) {
     return links.map((item) => (
       <Link
-        aria-current={pathname === item.href ? "page" : undefined}
+        aria-current={
+          pathname === item.href ||
+          (item.href !== "/teacher" &&
+            item.href !== "/admin" &&
+            pathname.startsWith(`${item.href}/`))
+            ? "page"
+            : undefined
+        }
         href={item.href}
         key={item.href}
         onClick={onNavigate}

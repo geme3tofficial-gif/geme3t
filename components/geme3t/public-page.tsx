@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Course } from "@/lib/site-data";
 import { CourseCard } from "./course-card";
+import { CourseCurriculum } from "./course-curriculum";
 import {
   CallToAction,
   SectionHeading,
@@ -142,6 +143,7 @@ function CoursePage({ course }: { course: Course }) {
           </aside>
         </div>
       </section>
+      {course.modules && <CourseCurriculum modules={course.modules} />}
       <CallToAction />
     </>
   );

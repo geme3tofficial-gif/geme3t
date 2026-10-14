@@ -135,10 +135,10 @@ export function MobileSiteNav({
                 </Link>
                 <Link
                   className="mobile-nav-student-link"
-                  href="/dashboard"
+                  href="/sign-in"
                   onClick={closeMenu}
                 >
-                  Student portal <span aria-hidden="true">↗</span>
+                  Sign in <span aria-hidden="true">↗</span>
                 </Link>
               </div>
             </nav>
