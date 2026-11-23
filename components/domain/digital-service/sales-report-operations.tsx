@@ -3,49 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { formatNaira } from "@/lib/domain/digital-service/format";
+import type { DigitalServiceOperation } from "@/lib/domain/digital-service/sales-types";
 import { completeDigitalServiceItem } from "@/app/(digital-service)/digital-service/sales-reports/actions";
-
-type Operation = {
-  id: string;
-  quoteId: string;
-  name: string;
-  unit: string;
-  quantity: number;
-  lineTotal: number;
-  unitPrice: number;
-  status: string;
-  createdAt: string;
-  quoteCreatedAt: string;
-  completedAt: string | null;
-  carryoverDate: string | null;
-  paymentChannels: string[];
-  cashAmount: number;
-  transferAmount: number;
-  redemptionAmount: number;
-  quoteStatus: string;
-  quoteCouponCode: string | null;
-  quoteGrossTotal: number;
-  quoteDirectDiscount: number;
-  quoteCouponDiscount: number;
-  quotePayableTotal: number;
-  quoteDirectCost: number;
-  quoteNetProfit: number;
-  quoteCommission: number;
-  customerCreditPct: number;
-  customer: {
-    name: string;
-    phone: string;
-    serviceCount: number;
-    serviceAmount: number;
-    creditBalance: number;
-    creditScore: number;
-    referralCredit: number;
-    couponCode: string | null;
-  } | null;
-  redemptionThreshold: number;
-  referralOnlyCoupon: boolean;
-  projectedCredit: number;
-};
 
 const paymentChannels = [
   { id: "cash", label: "Cash" },
@@ -55,9 +14,15 @@ const paymentChannels = [
 
 type PaymentChannel = (typeof paymentChannels)[number]["id"];
 
-export function SalesReportOperations({ operations }: { operations: Operation[] }) {
-  const [activeOperation, setActiveOperation] = useState<Operation | null>(null);
-  const [detailsOperation, setDetailsOperation] = useState<Operation | null>(null);
+export function SalesReportOperations({
+  operations,
+  title = "Pending & completed items",
+}: {
+  operations: DigitalServiceOperation[];
+  title?: string;
+}) {
+  const [activeOperation, setActiveOperation] = useState<DigitalServiceOperation | null>(null);
+  const [detailsOperation, setDetailsOperation] = useState<DigitalServiceOperation | null>(null);
   const [step, setStep] = useState(1);
   const [channels, setChannels] = useState<PaymentChannel[]>(["cash"]);
   const [cashAmount, setCashAmount] = useState(0);
@@ -139,7 +104,7 @@ export function SalesReportOperations({ operations }: { operations: Operation[] 
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [activeOperation, detailsOperation, isSubmitting]);
 
-  function openCompletion(operation: Operation) {
+  function openCompletion(operation: DigitalServiceOperation) {
     setDetailsOperation(null);
     setActiveOperation(operation);
     setStep(1);
@@ -197,7 +162,7 @@ export function SalesReportOperations({ operations }: { operations: Operation[] 
   return (
     <>
       <section className="dashboard-panel" style={{ marginBottom: 16 }}>
-        <h2>Pending & completed items</h2>
+        <h2>{title}</h2>
         <div style={{ overflowX: "auto" }}>
           <table className="admin-table">
             <thead>

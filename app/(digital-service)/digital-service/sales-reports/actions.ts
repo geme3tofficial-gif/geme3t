@@ -38,6 +38,10 @@ function startOfBusinessDate(dateText: string, timeZone: string) {
   return new Date(timestamp);
 }
 
+function roundCurrency(amount: number) {
+  return Math.round((amount + Number.EPSILON) * 100) / 100;
+}
+
 export async function closeDigitalServiceDay(formData: FormData) {
   await requireAdmin();
   const dateText = String(formData.get("date") ?? "").trim();
@@ -211,6 +215,28 @@ export async function completeDigitalServiceItem(input: {
       if (updatedCustomer.count !== 1) throw new Error("Customer credit balance changed; review the payment and try again.");
     }
 
+    if (quote.couponId) {
+      const coupon = await tx.digitalServiceCoupon.findUnique({
+        where: { id: quote.couponId },
+        select: { code: true },
+      });
+      if (coupon) {
+        const couponOwner = await tx.digitalServiceCustomer.findUnique({
+          where: { couponCode: coupon.code },
+        });
+        const referralCommission = roundCurrency(Number(quote.commissionEarned) * lineRatio);
+        if (couponOwner && referralCommission > 0) {
+          await tx.digitalServiceCustomer.update({
+            where: { id: couponOwner.id },
+            data: {
+              referralCredit: { increment: referralCommission },
+              creditBalance: { increment: referralCommission },
+            },
+          });
+        }
+      }
+    }
+
     await tx.digitalServiceFinanceEntry.create({
       data: {
         entryDate: new Date(),
@@ -260,6 +286,8 @@ export async function completeDigitalServiceItem(input: {
 
   revalidatePath("/digital-service/sales-reports");
   revalidatePath("/digital-service/sales");
+  revalidatePath("/digital-service/customers");
+  revalidatePath("/digital-service/coupons");
   revalidatePath("/digital-service/finance");
   revalidatePath("/digital-service");
 }

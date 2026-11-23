@@ -5,6 +5,10 @@ import { requireAdmin } from "@/lib/admin-auth";
 import { getPrismaClient } from "@/lib/prisma";
 import { calculateQuote } from "@/lib/domain/digital-service/calculations";
 
+function roundCurrency(amount: number) {
+  return Math.round((amount + Number.EPSILON) * 100) / 100;
+}
+
 export async function createSaleCustomer(input: { name: string; phone: string }) {
   await requireAdmin();
   const name = input.name.trim();
@@ -33,7 +37,7 @@ export async function createSaleCustomer(input: { name: string; phone: string })
         referralOnly: true,
         customerPct: 0,
         customerDirect: 0,
-        affiliatePct: 0,
+        affiliatePct: 5,
       },
     });
     const customer = await tx.digitalServiceCustomer.create({
@@ -90,7 +94,7 @@ export async function createSale(input: {
     ? await prisma.digitalServiceCoupon.findUnique({ where: { id: input.couponId }, include: { affiliate: true } })
     : null;
 
-  if (customer && customer.serviceCount > 0) {
+  if (customer && customer.serviceCount > 0 && coupon) {
     throw new Error("Returning customers cannot apply referral or customer coupons.");
   }
   const calculation = calculateQuote({
@@ -102,6 +106,7 @@ export async function createSale(input: {
     directCost: input.directCost,
     affiliatePct: coupon?.affiliatePct.toNumber() ?? 0,
   });
+  const commission = roundCurrency(calculation.commission);
 
   await prisma.$transaction(async (tx) => {
     const completedAt = input.status === "COMPLETED" ? new Date() : null;
@@ -116,7 +121,7 @@ export async function createSale(input: {
         directCost: calculation.directCost,
         netProfit: calculation.netProfit,
         customerDiscount: calculation.discount,
-        commissionEarned: calculation.commission,
+        commissionEarned: commission,
         status: input.status,
         items: {
           create: serverItems.map((item) => ({
@@ -145,8 +150,20 @@ export async function createSale(input: {
         await tx.digitalServiceAffiliate.update({
           where: { id: coupon.affiliate.id },
           data: {
-            commissionScore: { increment: calculation.commission },
+            commissionScore: { increment: commission },
             customerDiscountTotal: { increment: calculation.discount },
+          },
+        });
+      }
+      const couponOwner = await tx.digitalServiceCustomer.findUnique({
+        where: { couponCode: coupon.code },
+      });
+      if (couponOwner && commission > 0) {
+        await tx.digitalServiceCustomer.update({
+          where: { id: couponOwner.id },
+          data: {
+            referralCredit: { increment: commission },
+            creditBalance: { increment: commission },
           },
         });
       }
@@ -179,6 +196,8 @@ export async function createSale(input: {
   });
   revalidatePath("/digital-service/sales");
   revalidatePath("/digital-service/sales-reports");
+  revalidatePath("/digital-service/customers");
+  revalidatePath("/digital-service/coupons");
   revalidatePath("/digital-service");
   revalidatePath("/digital-service/finance");
 }
