@@ -219,9 +219,9 @@ export function SalesWizard({
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
           <div>
             <h2>New Sale</h2>
-            <p style={{ color: "var(--muted)", margin: 0 }}>Select services, add a customer, and review the customer/admin breakdown.</p>
+            <p style={{ color: "var(--muted)", margin: 0 }}>create new sale quotes</p>
           </div>
-          <button className="btn btn-primary" type="button" onClick={openModal}>Create New Sale</button>
+          <button className="btn btn-primary" type="button" onClick={openModal}>New Sale</button>
         </div>
       </section>
 
