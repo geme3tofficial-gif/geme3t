@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { connection } from "next/server";
 import { getPrismaClient } from "@/lib/prisma";
 import { formatNaira } from "@/lib/domain/digital-service/format";
 import { createFinanceEntry, deleteFinanceEntry } from "./actions";
@@ -6,6 +7,7 @@ import { createFinanceEntry, deleteFinanceEntry } from "./actions";
 export const metadata: Metadata = { title: "Digital service finance" };
 
 export default async function FinancePage() {
+  await connection();
   const entries = await getPrismaClient().digitalServiceFinanceEntry.findMany({ orderBy: { entryDate: "desc" }, take: 200 });
   const revenue = entries.filter((entry) => entry.type === "REVENUE").reduce((sum, entry) => sum + Number(entry.amount), 0);
   const expenses = entries.filter((entry) => entry.type === "EXPENSE").reduce((sum, entry) => sum + Number(entry.amount), 0);

@@ -97,6 +97,9 @@ export async function createSale(input: {
   if (customer && customer.serviceCount > 0 && coupon) {
     throw new Error("Returning customers cannot apply referral or customer coupons.");
   }
+  if (customer?.couponCode && coupon?.code && customer.couponCode.toUpperCase() === coupon.code.toUpperCase()) {
+    throw new Error("A customer cannot use their own referral coupon.");
+  }
   const calculation = calculateQuote({
     grossTotal: gross,
     directDiscount: input.directDiscount,
@@ -176,7 +179,7 @@ export async function createSale(input: {
           where: { id: customer.id },
           data: {
             serviceCount: { increment: serverItems.reduce((sum, item) => sum + item.quantity, 0) },
-            serviceAmount: { increment: calculation.payable },
+            serviceAmount: { increment: gross },
             creditBalance: { increment: calculation.netProfit * creditPct / 100 },
           },
         });
@@ -199,5 +202,147 @@ export async function createSale(input: {
   revalidatePath("/digital-service/customers");
   revalidatePath("/digital-service/coupons");
   revalidatePath("/digital-service");
+}
+
+export async function deleteSale(formData: FormData) {
+  await requireAdmin();
+  const quoteId = String(formData.get("quoteId") ?? "");
+  if (!quoteId) throw new Error("Sale is required.");
+
+  const prisma = getPrismaClient();
+  await prisma.$transaction(async (tx) => {
+    const quote = await tx.digitalServiceQuote.findUnique({
+      where: { id: quoteId },
+      include: { customer: true, coupon: true, items: true },
+    });
+    if (!quote) throw new Error("Sale not found.");
+
+    const gross = Number(quote.grossTotal);
+
+    if (quote.customer) {
+      const completedItems = quote.items.filter((item) => item.status === "completed");
+      const serviceQuantity = completedItems.reduce((sum, item) => sum + item.quantity, 0);
+      const serviceAmount = completedItems.reduce((sum, item) => sum + Number(item.lineTotal), 0);
+      const earnedCredit = quote.items
+        .filter((item) => item.status === "completed")
+        .reduce((sum, item) => {
+          const ratio = gross > 0 ? Number(item.lineTotal) / gross : 0;
+          return sum + Number(quote.netProfit) * ratio;
+        }, 0);
+      const creditSetting = await tx.digitalServiceAppSetting.findUnique({
+        where: { key: "customer_credit_pct" },
+      });
+      const creditPct = Math.max(0, Math.min(100, Number(creditSetting?.value ?? 5)));
+      const redemptionAmount = completedItems.reduce((sum, item) => sum + Number(item.redemptionAmount), 0);
+
+      await tx.digitalServiceCustomer.update({
+        where: { id: quote.customer.id },
+        data: {
+          serviceCount: { decrement: serviceQuantity },
+          serviceAmount: { decrement: serviceAmount },
+          creditBalance: { decrement: earnedCredit * creditPct / 100 - redemptionAmount },
+          redeemedAmount: { decrement: redemptionAmount },
+        },
+      });
+    }
+
+    if (quote.couponId && quote.status === "COMPLETED") {
+        await tx.digitalServiceCoupon.update({
+          where: { id: quote.couponId },
+          data: { usageCount: { decrement: 1 } },
+        });
+      if (quote.coupon?.affiliateId) {
+        await tx.digitalServiceAffiliate.update({
+          where: { id: quote.coupon.affiliateId },
+          data: {
+            commissionScore: { decrement: Number(quote.commissionEarned) },
+            customerDiscountTotal: { decrement: Number(quote.customerDiscount) },
+          },
+        });
+      }
+      const couponOwner = await tx.digitalServiceCustomer.findUnique({
+        where: { couponCode: quote.coupon?.code },
+      });
+      if (couponOwner && Number(quote.commissionEarned) > 0) {
+        await tx.digitalServiceCustomer.update({
+          where: { id: couponOwner.id },
+          data: {
+            referralCredit: { decrement: Number(quote.commissionEarned) },
+            creditBalance: { decrement: Number(quote.commissionEarned) },
+          },
+        });
+      }
+    }
+
+    const itemIds = quote.items.map((item) => item.id);
+    await tx.digitalServiceFinanceEntry.deleteMany({
+      where: {
+        source: "system",
+        OR: [
+          { description: `Quote ${quoteId}` },
+          ...itemIds.map((itemId) => ({ description: `Quote item ${itemId}` })),
+        ],
+      },
+    });
+    await tx.digitalServiceQuote.delete({ where: { id: quoteId } });
+  });
+
+  revalidatePath("/digital-service/sales");
+  revalidatePath("/digital-service/sales-reports");
+  revalidatePath("/digital-service/customers");
+  revalidatePath("/digital-service/coupons");
+  revalidatePath("/digital-service/finance");
+  revalidatePath("/digital-service");
+}
+
+export async function clearDigitalServiceTestData() {
+  await requireAdmin();
+  const prisma = getPrismaClient();
+
+  await prisma.$transaction(async (tx) => {
+    const customers = await tx.digitalServiceCustomer.findMany({
+      select: { couponCode: true },
+    });
+    const quotes = await tx.digitalServiceQuote.findMany({
+      select: { id: true, items: { select: { id: true } } },
+    });
+    const quoteIds = quotes.map((quote) => quote.id);
+    const itemIds = quotes.flatMap((quote) => quote.items.map((item) => item.id));
+
+    await tx.digitalServiceFinanceEntry.deleteMany({
+      where: {
+        source: "system",
+        OR: [
+          ...quoteIds.map((quoteId) => ({ description: `Quote ${quoteId}` })),
+          ...itemIds.map((itemId) => ({ description: `Quote item ${itemId}` })),
+        ],
+      },
+    });
+    await tx.digitalServiceQuote.deleteMany({});
+    await tx.digitalServiceCustomer.deleteMany({});
+    await tx.digitalServiceCoupon.deleteMany({
+      where: {
+        OR: [
+          { referralOnly: true },
+          { code: { in: customers.flatMap((customer) => customer.couponCode ? [customer.couponCode] : []) } },
+        ],
+      },
+    });
+    await tx.digitalServiceCoupon.updateMany({
+      data: { usageCount: 0 },
+    });
+    await tx.digitalServiceAffiliate.updateMany({
+      data: { commissionScore: 0, customerDiscountTotal: 0 },
+    });
+    await tx.digitalServiceDayClose.deleteMany({});
+  });
+
+  revalidatePath("/digital-service");
+  revalidatePath("/digital-service/sales");
+  revalidatePath("/digital-service/sales-reports");
+  revalidatePath("/digital-service/customers");
+  revalidatePath("/digital-service/coupons");
+  revalidatePath("/digital-service/affiliates");
+  revalidatePath("/digital-service/finance");
   revalidatePath("/digital-service/finance");
 }

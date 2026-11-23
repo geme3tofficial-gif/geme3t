@@ -1,10 +1,13 @@
 import type { Metadata } from "next";
+import { connection } from "next/server";
 import { getPrismaClient } from "@/lib/prisma";
-import { deleteCoupon, saveCoupon } from "./actions";
+import { saveCoupon } from "./actions";
+import { CouponActions } from "@/components/domain/digital-service/coupon-actions";
 
 export const metadata: Metadata = { title: "Digital service coupons" };
 
 export default async function CouponsPage() {
+  await connection();
   const prisma = getPrismaClient();
   const [coupons, affiliates] = await Promise.all([
     prisma.digitalServiceCoupon.findMany({ include: { affiliate: true }, orderBy: { code: "asc" } }),
@@ -37,25 +40,24 @@ export default async function CouponsPage() {
           <td>{coupon.referralOnly ? "Yes" : "No"}</td>
           <td>{coupon.affiliatePct.toString()}%</td>
           <td>
-            <details className="digital-service-edit-details">
-              <summary className="button button--small button--light">Edit</summary>
-              <form action={saveCoupon} className="digital-service-inline-edit">
-                <input type="hidden" name="id" value={coupon.id} />
-                <label><span>Code</span><input name="code" defaultValue={coupon.code} required /></label>
-                <label><span>Tier</span><input name="tier" defaultValue={coupon.tier} /></label>
-                <label><span>Customer %</span><input name="customerPct" type="number" min="0" max="100" step="0.01" defaultValue={coupon.customerPct.toString()} required /></label>
-                <label><span>Direct discount</span><input name="customerDirect" type="number" min="0" step="0.01" defaultValue={coupon.customerDirect.toString()} required /></label>
-                <label><span>Commission %</span><input name="affiliatePct" type="number" min="0" max="100" step="0.01" defaultValue={coupon.affiliatePct.toString()} required /></label>
-                <label><span>Affiliate</span><select name="affiliateId" defaultValue={coupon.affiliateId ?? ""}><option value="">None</option>{affiliates.map((affiliate)=><option value={affiliate.id} key={affiliate.id}>{affiliate.name}{affiliate.active ? "" : " (inactive)"}</option>)}</select></label>
-                <label><span>Redemption threshold</span><input name="redemptionThreshold" type="number" min="1" defaultValue={coupon.redemptionThreshold} required /></label>
-                <label className="digital-service-checkbox-label"><input name="referralOnly" type="checkbox" defaultChecked={coupon.referralOnly} /> Referral only</label>
-                <button className="button button--small" type="submit">Save changes</button>
-              </form>
-            </details>
-            <form action={deleteCoupon} style={{ marginTop:8 }}>
-              <input type="hidden" name="id" value={coupon.id} />
-              <button className="button button--small" style={{ background:"#dc2626",color:"#fff" }} type="submit">Delete</button>
-            </form>
+            <CouponActions
+              coupon={{
+                id: coupon.id,
+                code: coupon.code,
+                tier: coupon.tier,
+                customerPct: coupon.customerPct.toString(),
+                customerDirect: coupon.customerDirect.toString(),
+                affiliatePct: coupon.affiliatePct.toString(),
+                affiliateId: coupon.affiliateId,
+                redemptionThreshold: coupon.redemptionThreshold,
+                referralOnly: coupon.referralOnly,
+              }}
+              affiliates={affiliates.map((affiliate) => ({
+                id: affiliate.id,
+                name: affiliate.name,
+                active: affiliate.active,
+              }))}
+            />
           </td>
         </tr>)}</tbody></table></div>
         {coupons.length === 0 && <p>No coupons yet.</p>}

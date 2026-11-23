@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { formatNaira } from "@/lib/domain/digital-service/format";
 import type { DigitalServiceOperation } from "@/lib/domain/digital-service/sales-types";
 import { completeDigitalServiceItem } from "@/app/(digital-service)/digital-service/sales-reports/actions";
+import { deleteSale } from "@/app/(digital-service)/digital-service/sales/actions";
 
 const paymentChannels = [
   { id: "cash", label: "Cash" },
@@ -159,6 +160,21 @@ export function SalesReportOperations({
     }
   }
 
+  async function deleteTransaction(operation: DigitalServiceOperation) {
+    if (!window.confirm("Delete this entire sale and remove all of its line items?")) return;
+    setIsSubmitting(true);
+    try {
+      const formData = new FormData();
+      formData.set("quoteId", operation.quoteId);
+      await deleteSale(formData);
+      toast.success("Sale deleted.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not delete the sale.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
   return (
     <>
       <section className="dashboard-panel" style={{ marginBottom: 16 }}>
@@ -189,6 +205,15 @@ export function SalesReportOperations({
                         Complete transaction
                       </button>
                     )}
+                    <button
+                      className="button button--small"
+                      style={{ background: "#dc2626", color: "#fff" }}
+                      type="button"
+                      disabled={isSubmitting}
+                      onClick={() => void deleteTransaction(operation)}
+                    >
+                      Delete
+                    </button>
                   </td>
                 </tr>
               ))}

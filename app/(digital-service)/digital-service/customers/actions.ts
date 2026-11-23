@@ -78,8 +78,21 @@ export async function deleteCustomer(formData: FormData) {
   await requireAdmin();
   const id = String(formData.get("id") ?? "");
   if (!id) throw new Error("Customer is required.");
-  await getPrismaClient().digitalServiceCustomer.delete({ where: { id } });
+  const prisma = getPrismaClient();
+  await prisma.$transaction(async (tx) => {
+    const customer = await tx.digitalServiceCustomer.findUnique({
+      where: { id },
+      select: { couponCode: true },
+    });
+    if (!customer) throw new Error("Customer not found.");
+    await tx.digitalServiceCustomer.delete({ where: { id } });
+    if (customer.couponCode) {
+      await tx.digitalServiceCoupon.deleteMany({ where: { code: customer.couponCode } });
+    }
+  });
   revalidatePath("/digital-service/customers");
+  revalidatePath("/digital-service/coupons");
+  revalidatePath("/digital-service/sales");
 }
 
 export async function setCustomerCredit(formData: FormData) {

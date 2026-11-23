@@ -23,6 +23,7 @@ type Coupon = {
   code: string;
   customerPct: string;
   customerDirect: string;
+  affiliatePct: string;
   referralOnly: boolean;
 };
 type SelectedItem = CatalogService & { quantity: number };
@@ -49,7 +50,7 @@ export function SalesWizard({
   const [newCustomerName, setNewCustomerName] = useState("");
   const [newCustomerPhone, setNewCustomerPhone] = useState("");
   const [couponCode, setCouponCode] = useState("");
-  const [couponMode, setCouponMode] = useState<"void" | "retain">("void");
+  const [couponMode, setCouponMode] = useState<"void" | "retain">("retain");
   const [directDiscount, setDirectDiscount] = useState(0);
   const [manualCustomerPct, setManualCustomerPct] = useState(0);
   const [directCost, setDirectCost] = useState(0);
@@ -70,7 +71,13 @@ export function SalesWizard({
     couponCode.trim()
       ? couponList.find((coupon) => coupon.code.toUpperCase() === couponCode.trim().toUpperCase()) ?? null
       : null;
-  const couponDisabled = Boolean(selectedCustomer?.serviceCount);
+  const couponDisabled =
+    Boolean(selectedCustomer?.serviceCount) ||
+    Boolean(
+      selectedCustomer?.couponCode &&
+      activeCoupon &&
+      selectedCustomer.couponCode.toUpperCase() === activeCoupon.code.toUpperCase(),
+    );
 
   const gross = useMemo(
     () => selected.reduce((sum, item) => sum + Number(item.price) * item.quantity, 0),
@@ -96,7 +103,7 @@ export function SalesWizard({
     setCustomerId("");
     setCustomerSearch("");
     setCouponCode("");
-    setCouponMode("void");
+    setCouponMode("retain");
     setDirectDiscount(0);
     setManualCustomerPct(0);
     setDirectCost(0);
@@ -202,15 +209,29 @@ export function SalesWizard({
   const projectedCredit = selectedCustomer
     ? calculation.netProfit * Math.max(0, Math.min(100, customerCreditPct)) / 100
     : 0;
+  const referrerCommission =
+    activeCoupon && !couponDisabled && couponMode === "retain"
+      ? calculation.netProfit * Number(activeCoupon.affiliatePct) / 100
+      : 0;
+  const couponOwner = activeCoupon
+    ? customerList.find((customer) => customer.couponCode?.toUpperCase() === activeCoupon.code.toUpperCase())
+    : undefined;
+  const usingOwnCoupon = Boolean(
+    selectedCustomer?.couponCode &&
+    activeCoupon &&
+    selectedCustomer.couponCode.toUpperCase() === activeCoupon.code.toUpperCase(),
+  );
   const couponStatus =
-    couponDisabled
+    usingOwnCoupon
+      ? "Your own coupon cannot be used by you"
+      : couponDisabled
       ? "Coupon disabled for saved/returning customers"
       : !couponCode.trim()
         ? "Optional coupon not applied"
         : activeCoupon
           ? couponMode === "void"
-            ? "Coupon voided · benefits not retained"
-            : `Valid coupon · ${activeCoupon.referralOnly ? "Referral" : "Custom"}`
+            ? "Coupon voided · no referree discount or referrer commission"
+            : "Valid coupon · referree discount and referrer commission retained"
           : "Coupon not found";
 
   return (
@@ -448,7 +469,7 @@ export function SalesWizard({
                       <h2>Admin Breakdown</h2>
                       <div className="grid-3">
                         <div className="field"><label>Direct Cost (₦)</label><input type="number" min="0" value={directCost} onChange={(event) => setDirectCost(Math.max(0, Number(event.target.value) || 0))} /></div>
-                        <div className="field"><label>Affiliate %</label><input type="number" min="0" max="100" value={activeCoupon ? activeCoupon.customerPct : 0} readOnly /></div>
+                        <div className="field"><label>Referrer commission %</label><input type="number" min="0" max="100" value={activeCoupon && couponMode === "retain" ? activeCoupon.affiliatePct : 0} readOnly /></div>
                         <div className="field"><label>Direct Coupon Discount (₦)</label><input type="number" min="0" value={activeCoupon ? activeCoupon.customerDirect : 0} readOnly /></div>
                       </div>
                       <div className="line" style={{ marginTop: 10 }}><span>Gross Revenue</span><b>{formatNaira(calculation.gross)}</b></div>
@@ -458,6 +479,11 @@ export function SalesWizard({
                       <div className="line"><span>Direct Cost</span><b>{formatNaira(calculation.directCost)}</b></div>
                       <div className="line"><span>Qualifying Profit</span><b>{formatNaira(calculation.netProfit)}</b></div>
                       <div className="line"><span><strong>Net Profit</strong></span><b>{formatNaira(calculation.netProfit)}</b></div>
+                      <div className="line"><span>Referee coupon discount</span><b>{formatNaira(calculation.couponDiscount)}</b></div>
+                      <div className="line"><span>Referrer commission</span><b>{formatNaira(referrerCommission)}</b></div>
+                      {couponOwner ? (
+                        <div className="line"><span>Referrer</span><b>{couponOwner.name} · {couponOwner.phone}</b></div>
+                      ) : null}
                     </div>
                   )}
                 </section>

@@ -1,11 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { connection } from "next/server";
 import { getPrismaClient } from "@/lib/prisma";
 import { formatNaira } from "@/lib/domain/digital-service/format";
+import { ClearTestDataButton } from "@/components/domain/digital-service/clear-test-data-button";
 
 export const metadata: Metadata = { title: "Digital services" };
 
 export default async function DigitalServiceDashboardPage() {
+  await connection();
   const prisma = getPrismaClient();
   const [categories, services, customers, coupons, quotes] =
     await prisma.$transaction([
@@ -58,6 +61,11 @@ export default async function DigitalServiceDashboardPage() {
           <Link className="button button--small" href="/digital-service/finance">Income & expenses</Link>
           <Link className="button button--small button--light" href="/digital-service/sales-reports">Open weekly report</Link>
         </div>
+      </section>
+      <section className="dashboard-panel" style={{ marginTop: 16, border: "1px solid #dc2626" }}>
+        <h2>Test data management</h2>
+        <p>Clear sales, sales items, finance entries, customers, customer coupons, and day-close records.</p>
+        <ClearTestDataButton />
       </section>
     </>
   );

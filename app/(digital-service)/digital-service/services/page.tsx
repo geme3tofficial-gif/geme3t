@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { connection } from "next/server";
 import { getPrismaClient } from "@/lib/prisma";
 import { formatNaira } from "@/lib/domain/digital-service/format";
 import {
@@ -13,6 +14,7 @@ import {
 export const metadata: Metadata = { title: "Digital service catalog" };
 
 export default async function ServicesPage() {
+  await connection();
   const categories = await getPrismaClient().digitalServiceCategory.findMany({
     include: { services: { orderBy: { name: "asc" } } },
     orderBy: { name: "asc" },

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { connection } from "next/server";
 import { WorkspaceSectionPage, getWorkspaceSection } from "@/components/geme3t/workspace-section-page";
 import { requireAdmin } from "@/lib/admin-auth";
 
@@ -25,6 +26,7 @@ export async function generateMetadata({
 export default async function AdminSectionRoute({
   params,
 }: AdminSectionProps) {
+  await connection();
   const { section } = await params;
   if (!getWorkspaceSection("Administrator", section)) notFound();
   return <WorkspaceSectionPage role="Administrator" section={section} />;

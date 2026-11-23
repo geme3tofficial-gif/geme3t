@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
+import { connection } from "next/server";
 import { getPrismaClient } from "@/lib/prisma";
 import { deleteAffiliate, saveAffiliate, toggleAffiliate } from "./actions";
 
 export const metadata: Metadata = { title: "Digital service affiliates" };
 
 export default async function AffiliatesPage() {
+  await connection();
   const affiliates = await getPrismaClient().digitalServiceAffiliate.findMany({ orderBy: { name: "asc" }, include: { coupons: true } });
   return (
     <><div className="dashboard-welcome"><div><span className="eyebrow">Partners</span><h1>Affiliates</h1><p>Affiliate tiers, commissions, and linked coupons.</p></div></div>

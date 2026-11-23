@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { connection } from "next/server";
 import { getDigitalServiceSalesReportData } from "@/lib/domain/digital-service/sales-report-data";
 import { DayCloseControls } from "@/components/domain/digital-service/day-close-controls";
 import { DayCloseCountdown } from "@/components/domain/digital-service/day-close-countdown";
@@ -8,6 +9,7 @@ import { SalesReportQuoteHistory } from "@/components/domain/digital-service/sal
 export const metadata: Metadata = { title: "Digital service sales reports" };
 
 export default async function SalesReportsPage() {
+  await connection();
   const { quotes, operations } = await getDigitalServiceSalesReportData();
   const quoteHistory = quotes.map((quote) => ({
     id: quote.id,

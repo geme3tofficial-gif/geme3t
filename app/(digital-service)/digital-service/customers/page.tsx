@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { connection } from "next/server";
 import { getPrismaClient } from "@/lib/prisma";
 import { formatNaira } from "@/lib/domain/digital-service/format";
 import { deleteCustomer, saveCustomer, setCustomerCredit } from "./actions";
@@ -6,6 +7,7 @@ import { deleteCustomer, saveCustomer, setCustomerCredit } from "./actions";
 export const metadata: Metadata = { title: "Digital service customers" };
 
 export default async function CustomersPage() {
+  await connection();
   const prisma = getPrismaClient();
   const [customers, creditSetting] = await Promise.all([
     prisma.digitalServiceCustomer.findMany({ orderBy: { name: "asc" } }),
