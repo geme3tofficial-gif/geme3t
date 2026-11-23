@@ -4,6 +4,7 @@ import { UserRole } from "@prisma/client";
 import { AvailableTeachingCohorts } from "@/components/geme3t/available-teaching-cohorts";
 import { requireCourseEditor } from "@/lib/course-editor-auth";
 import { getPrismaClient } from "@/lib/prisma";
+import { calculateTeacherCourseProgress } from "@/lib/teacher-course-progress";
 
 export const metadata: Metadata = {
   title: "Teacher dashboard",
@@ -44,9 +45,30 @@ export default async function TeacherDashboardPage({
         id: true,
         name: true,
         status: true,
-        course: { select: { title: true } },
         _count: {
           select: { enrollments: { where: { status: "ACTIVE" } } },
+        },
+        course: {
+          select: {
+            title: true,
+            modules: {
+              select: {
+                lessons: {
+                  where: { isPublished: true },
+                  select: { id: true },
+                },
+              },
+            },
+          },
+        },
+        enrollments: {
+          where: { status: { in: ["ACTIVE", "COMPLETED"] } },
+          select: {
+            lessonProgress: {
+              where: { status: "COMPLETED" },
+              select: { lessonId: true },
+            },
+          },
         },
       },
     }),
@@ -104,12 +126,39 @@ export default async function TeacherDashboardPage({
             </p>
           ) : (
             <ul className="teacher-dashboard-assignments">
-              {cohorts.slice(0, 4).map((cohort) => (
-                <li key={cohort.id}>
-                  <strong>{cohort.course.title} · {cohort.name}</strong>
-                  <span>{cohort.status.toLowerCase()} · {cohort._count.enrollments} active learners</span>
-                </li>
-              ))}
+              {cohorts.slice(0, 4).map((cohort) => {
+                const lessonIds = cohort.course.modules.flatMap(({ lessons }) =>
+                  lessons.map(({ id }) => id),
+                );
+                const progress = calculateTeacherCourseProgress(
+                  lessonIds,
+                  cohort.enrollments,
+                );
+                return (
+                  <li key={cohort.id}>
+                    <strong>{cohort.course.title} · {cohort.name}</strong>
+                    <span>
+                      {cohort.status.toLowerCase()} · {cohort.enrollments.length} active or completed learners
+                    </span>
+                    <div className="teacher-course-progress teacher-course-progress-compact">
+                      <div className="teacher-course-progress-heading">
+                        <span>Average progress</span>
+                        <strong>{progress}%</strong>
+                      </div>
+                      <div
+                        aria-label={`${progress}% learner progress for ${cohort.name}`}
+                        aria-valuemax={100}
+                        aria-valuemin={0}
+                        aria-valuenow={progress}
+                        className="progress-track"
+                        role="progressbar"
+                      >
+                        <span style={{ width: `${progress}%` }} />
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </section>

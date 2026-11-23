@@ -4,6 +4,7 @@ import {
   CohortStatus,
   CourseStatus,
   CourseSuggestionStatus,
+  LearningMode,
   LessonContentKind,
   ModuleAccessType,
   Prisma,
@@ -97,6 +98,13 @@ function isCohortStatus(value: unknown): value is CohortStatus {
   return (
     typeof value === "string" &&
     Object.values(CohortStatus).some((status) => status === value)
+  );
+}
+
+function isLearningMode(value: unknown): value is LearningMode {
+  return (
+    typeof value === "string" &&
+    Object.values(LearningMode).some((mode) => mode === value)
   );
 }
 
@@ -413,8 +421,17 @@ export async function applyToTeachCohort(formData: FormData) {
   }
 
   const cohortId = readText(formData, "cohortId", 36);
+  const returnCourseId = readText(formData, "returnCourseId", 36);
+  const returnPath =
+    formData.get("returnPath") === "/teacher/courses" &&
+    returnCourseId !== null &&
+    isUuid(returnCourseId)
+      ? `/teacher/courses?course=${returnCourseId}`
+      : "/teacher";
+  const noticePath = (notice: string) =>
+    `${returnPath}${returnPath.includes("?") ? "&" : "?"}notice=${notice}`;
   if (!cohortId || !isUuid(cohortId)) {
-    redirect("/teacher?notice=invalid-cohort-application");
+    redirect(noticePath("invalid-cohort-application"));
   }
 
   const prisma = getPrismaClient();
@@ -429,7 +446,7 @@ export async function applyToTeachCohort(formData: FormData) {
     select: { id: true },
   });
   if (!availableCohort) {
-    redirect("/teacher?notice=cohort-no-longer-available");
+    redirect(noticePath("cohort-no-longer-available"));
   }
 
   try {
@@ -443,7 +460,7 @@ export async function applyToTeachCohort(formData: FormData) {
       existing?.status === TeacherCohortApplicationStatus.PENDING ||
       existing?.status === TeacherCohortApplicationStatus.APPROVED
     ) {
-      redirect("/teacher?notice=cohort-application-exists");
+      redirect(noticePath("cohort-application-exists"));
     }
 
     if (existing?.status === TeacherCohortApplicationStatus.REJECTED) {
@@ -470,13 +487,14 @@ export async function applyToTeachCohort(formData: FormData) {
       error instanceof Prisma.PrismaClientKnownRequestError &&
       error.code === "P2002"
     ) {
-      redirect("/teacher?notice=cohort-application-exists");
+      redirect(noticePath("cohort-application-exists"));
     }
     throw error;
   }
 
   revalidateSchedulePaths();
-  redirect("/teacher?notice=cohort-application-submitted");
+  revalidatePath("/teacher/courses");
+  redirect(noticePath("cohort-application-submitted"));
 }
 
 export async function reviewTeacherCohortApplication(formData: FormData) {
@@ -604,6 +622,30 @@ function revalidateCourseModules(courseId: string, slug: string) {
   revalidatePath(`/${slug}`);
   revalidatePath("/courses");
   revalidatePath("/apply");
+  revalidatePath("/dashboard/learning");
+}
+
+async function recordTeacherCourseAction(
+  editor: Awaited<ReturnType<typeof requireCourseEditor>>,
+  action: string,
+  entityType: string,
+  entityId: string | null,
+  courseId: string,
+  moduleId: string | null,
+  details: Prisma.InputJsonValue,
+) {
+  if (editor.role !== UserRole.TEACHER) return;
+  await getPrismaClient().teacherCourseActionLog.create({
+    data: {
+      teacherId: editor.userId,
+      courseId,
+      moduleId,
+      action,
+      entityType,
+      entityId,
+      details,
+    },
+  });
 }
 
 export async function saveCourseModule(formData: FormData) {
@@ -654,6 +696,7 @@ export async function saveCourseModule(formData: FormData) {
     redirect(`${editorPath}?moduleNotice=invalid-module`);
   }
 
+  let savedModuleId: string;
   try {
     const data = {
       title,
@@ -662,14 +705,18 @@ export async function saveCourseModule(formData: FormData) {
       accessTypes,
     };
     if (moduleId) {
-      await prisma.courseModule.update({
+      const saved = await prisma.courseModule.update({
         where: { id: moduleId },
         data,
+        select: { id: true },
       });
+      savedModuleId = saved.id;
     } else {
-      await prisma.courseModule.create({
+      const saved = await prisma.courseModule.create({
         data: { ...data, courseId },
+        select: { id: true },
       });
+      savedModuleId = saved.id;
     }
   } catch (error) {
     if (
@@ -681,6 +728,15 @@ export async function saveCourseModule(formData: FormData) {
     throw error;
   }
 
+  await recordTeacherCourseAction(
+    editor,
+    moduleId ? "UPDATE_MODULE" : "CREATE_MODULE",
+    "COURSE_MODULE",
+    savedModuleId,
+    course.id,
+    savedModuleId,
+    { title, description },
+  );
   revalidateCourseModules(course.id, course.slug);
   redirect(`${editorPath}?moduleNotice=saved-module`);
 }
@@ -759,6 +815,20 @@ export async function moveCourseModule(formData: FormData) {
       });
     }
   });
+  for (const item of [
+    reordered[currentIndex],
+    reordered[targetIndex],
+  ]) {
+    await recordTeacherCourseAction(
+      editor,
+      "REORDER_MODULE",
+      "COURSE_MODULE",
+      item.id,
+      courseModule.courseId,
+      item.id,
+      { direction },
+    );
+  }
 
   revalidateCourseModules(courseModule.courseId, courseModule.course.slug);
   redirect(`${editorPath}?moduleNotice=saved-order`);
@@ -797,6 +867,7 @@ export async function saveLesson(formData: FormData) {
   await assertCourseEditorCourseAccess(editor, courseModule.courseId);
   const returnPath = courseContentEditorPath(courseModule.courseId, role);
 
+  let savedLessonId: string;
   if (lessonId) {
     const existingLesson = await prisma.lesson.findFirst({
       where: { id: lessonId, moduleId },
@@ -805,28 +876,41 @@ export async function saveLesson(formData: FormData) {
     if (!existingLesson) {
       redirect(`${returnPath}?moduleNotice=invalid-lesson`);
     }
-    await prisma.lesson.update({
+    const saved = await prisma.lesson.update({
       where: { id: lessonId },
       data: {
         title,
         isPublished,
       },
+      select: { id: true },
     });
+    savedLessonId = saved.id;
   } else {
     const sortOrder = (courseModule.lessons[0]?.sortOrder ?? 0) + 1;
     if (sortOrder > 500) {
       redirect(`${returnPath}?moduleNotice=invalid-lesson`);
     }
-    await prisma.lesson.create({
+    const saved = await prisma.lesson.create({
       data: {
         moduleId,
         title,
         sortOrder,
         isPublished,
       },
+      select: { id: true },
     });
+    savedLessonId = saved.id;
   }
 
+  await recordTeacherCourseAction(
+    editor,
+    lessonId ? "UPDATE_LESSON" : "CREATE_LESSON",
+    "LESSON",
+    savedLessonId,
+    courseModule.courseId,
+    moduleId,
+    { title, isPublished },
+  );
   revalidateLessonPaths(courseModule.courseId, courseModule.course.slug);
   redirect(`${returnPath}?moduleNotice=saved-lesson`);
 }
@@ -894,6 +978,17 @@ export async function moveLesson(formData: FormData) {
       });
     }
   });
+  for (const item of [reordered[currentIndex], reordered[targetIndex]]) {
+    await recordTeacherCourseAction(
+      editor,
+      "REORDER_LESSON",
+      "LESSON",
+      item.id,
+      lesson.module.courseId,
+      lesson.moduleId,
+      { direction },
+    );
+  }
 
   revalidateLessonPaths(lesson.module.courseId, lesson.module.course.slug);
   redirect(`${returnPath}?moduleNotice=saved-order`);
@@ -934,14 +1029,24 @@ export async function createLessonContentItem(formData: FormData) {
     redirect(`${returnPath}?moduleNotice=invalid-lesson`);
   }
 
-  await prisma.lessonContentItem.create({
+  const createdItem = await prisma.lessonContentItem.create({
     data: {
       lessonId,
       kind,
       title: kind === LessonContentKind.TEXT ? "Lesson text" : "YouTube video",
       sortOrder,
     },
+    select: { id: true },
   });
+  await recordTeacherCourseAction(
+    editor,
+    "CREATE_LESSON_CONTENT",
+    "LESSON_CONTENT",
+    createdItem.id,
+    lesson.module.courseId,
+    lesson.moduleId,
+    { kind },
+  );
   revalidateLessonPaths(lesson.module.courseId, lesson.module.course.slug);
   redirect(`${returnPath}?moduleNotice=saved-content`);
 }
@@ -979,6 +1084,7 @@ export async function saveLessonContentItem(formData: FormData) {
       kind: true,
       lesson: {
         select: {
+          moduleId: true,
           module: {
             select: { courseId: true, course: { select: { slug: true } } },
           },
@@ -1012,6 +1118,15 @@ export async function saveLessonContentItem(formData: FormData) {
       url: contentItem.kind === LessonContentKind.VIDEO ? url : null,
     },
   });
+  await recordTeacherCourseAction(
+    editor,
+    "UPDATE_LESSON_CONTENT",
+    "LESSON_CONTENT",
+    contentItem.id,
+    contentItem.lesson.module.courseId,
+    contentItem.lesson.moduleId,
+    { title },
+  );
   revalidateLessonPaths(
     contentItem.lesson.module.courseId,
     contentItem.lesson.module.course.slug,
@@ -1046,7 +1161,11 @@ export async function moveLessonContentItem(formData: FormData) {
       lesson: {
         select: {
           module: {
-            select: { courseId: true, course: { select: { slug: true } } },
+            select: {
+              id: true,
+              courseId: true,
+              course: { select: { slug: true } },
+            },
           },
           contentItems: {
             orderBy: { sortOrder: "asc" },
@@ -1099,6 +1218,15 @@ export async function moveLessonContentItem(formData: FormData) {
       });
     }
   });
+  await recordTeacherCourseAction(
+    editor,
+    "REORDER_LESSON_CONTENT",
+    "LESSON_CONTENT",
+    contentItem.id,
+    courseId,
+    contentItem.lesson.module.id,
+    { direction },
+  );
   revalidateLessonPaths(courseId, slug);
   redirect(`${returnPath}?moduleNotice=saved-order`);
 }
@@ -1140,13 +1268,14 @@ export async function uploadLessonAttachmentAction(formData: FormData) {
     );
   }
 
+  let uploadedItemId: string;
   try {
     const uploaded = await uploadLessonAttachment(file, lesson.id);
     try {
       const fileName = file.name
         .replace(/[\u0000-\u001f\u007f]/g, "")
         .slice(0, 255) || "Lesson attachment";
-      await prisma.lessonContentItem.create({
+      const item = await prisma.lessonContentItem.create({
         data: {
           lessonId: lesson.id,
           kind: LessonContentKind.ATTACHMENT,
@@ -1156,7 +1285,9 @@ export async function uploadLessonAttachmentAction(formData: FormData) {
           storagePath: uploaded.storagePath,
           sortOrder: (lesson.contentItems[0]?.sortOrder ?? 0) + 1,
         },
+        select: { id: true },
       });
+      uploadedItemId = item.id;
     } catch (error) {
       try {
         await deleteLessonAttachment(uploaded.storagePath);
@@ -1182,6 +1313,15 @@ export async function uploadLessonAttachmentAction(formData: FormData) {
     throw error;
   }
 
+  await recordTeacherCourseAction(
+    editor,
+    "UPLOAD_LESSON_ATTACHMENT",
+    "LESSON_CONTENT",
+    uploadedItemId,
+    lesson.module.courseId,
+    lesson.moduleId,
+    {},
+  );
   revalidateLessonPaths(lesson.module.courseId, lesson.module.course.slug);
   redirect(`${returnPath}?moduleNotice=saved-content`);
 }
@@ -1205,7 +1345,11 @@ export async function removeLessonContentItem(formData: FormData) {
         select: {
           moduleId: true,
           module: {
-            select: { courseId: true, course: { select: { slug: true } } },
+            select: {
+              id: true,
+              courseId: true,
+              course: { select: { slug: true } },
+            },
           },
         },
       },
@@ -1242,6 +1386,15 @@ export async function removeLessonContentItem(formData: FormData) {
     }
   }
   await prisma.lessonContentItem.delete({ where: { id: contentItem.id } });
+  await recordTeacherCourseAction(
+    editor,
+    "DELETE_LESSON_CONTENT",
+    "LESSON_CONTENT",
+    contentItem.id,
+    contentItem.lesson.module.courseId,
+    contentItem.lesson.module.id,
+    { kind: contentItem.kind },
+  );
   revalidateLessonPaths(
     contentItem.lesson.module.courseId,
     contentItem.lesson.module.course.slug,
@@ -1402,6 +1555,7 @@ function revalidateSchedulePaths() {
   revalidatePath("/teacher/schedule");
   revalidatePath("/apply");
   revalidatePath("/admin/applications");
+  revalidatePath("/dashboard/learning");
 }
 
 export async function saveCohort(formData: FormData) {
@@ -1410,16 +1564,26 @@ export async function saveCohort(formData: FormData) {
   const courseId = readText(formData, "courseId", 36);
   const name = readText(formData, "name", 120);
   const startsAt = readUtcDateTime(formData, "startsAt");
-  const endsAtValue = formData.get("endsAt");
+  const durationWeeksValue = formData.get("durationWeeks");
+  const durationWeeksText =
+    typeof durationWeeksValue === "string"
+      ? durationWeeksValue.trim()
+      : undefined;
+  const durationWeeks =
+    durationWeeksText && /^\d+$/.test(durationWeeksText)
+      ? Number(durationWeeksText)
+      : null;
   const endsAt =
-    typeof endsAtValue === "string" && endsAtValue.trim()
-      ? readUtcDateTime(formData, "endsAt")
+    startsAt && durationWeeks
+      ? new Date(startsAt.getTime() + durationWeeks * 7 * 24 * 60 * 60 * 1000)
       : null;
   const seatLimitValue = formData.get("seatLimit");
   const seatLimitText =
     typeof seatLimitValue === "string" ? seatLimitValue.trim() : undefined;
   const seatLimit =
     seatLimitText === "" ? null : Number(seatLimitText);
+  const learningMode = formData.get("learningMode");
+  const whatsappGroupUrl = readOptionalText(formData, "whatsappGroupUrl", 500);
   const status = formData.get("status");
   const submittedTeacherIds = formData.getAll("teacherIds");
   const teacherIds = submittedTeacherIds.filter(
@@ -1427,26 +1591,56 @@ export async function saveCohort(formData: FormData) {
   );
   const uniqueTeacherIds = [...new Set(teacherIds)];
 
+  if (formData.has("id") && (!id || !isUuid(id))) {
+    redirect("/admin/cohorts?notice=invalid-cohort-id");
+  }
+  if (!courseId || !isUuid(courseId)) {
+    redirect("/admin/cohorts?notice=invalid-course-selection");
+  }
+  if (!name) {
+    redirect("/admin/cohorts?notice=invalid-cohort-name");
+  }
+  if (!startsAt) {
+    redirect("/admin/cohorts?notice=invalid-cohort-start");
+  }
   if (
-    (formData.has("id") && (!id || !isUuid(id))) ||
-    !courseId ||
-    !isUuid(courseId) ||
-    !name ||
-    !startsAt ||
-    (typeof endsAtValue !== "string" ||
-      (endsAtValue.trim() !== "" && !endsAt)) ||
-    (endsAt && endsAt <= startsAt) ||
+    durationWeeksText === undefined ||
+    durationWeeks === null ||
+    durationWeeks < 1 ||
+    durationWeeks > 100
+  ) {
+    redirect("/admin/cohorts?notice=invalid-cohort-duration");
+  }
+  if (
     seatLimitText === undefined ||
     (seatLimitText !== "" &&
       (seatLimit === null ||
         !Number.isInteger(seatLimit) ||
         seatLimit < 1 ||
-        seatLimit > 100000)) ||
-    !isCohortStatus(status)
+        seatLimit > 100000))
   ) {
-    redirect("/admin/cohorts?notice=invalid-cohort");
+    redirect("/admin/cohorts?notice=invalid-cohort-seat-limit");
   }
-
+  if (!isLearningMode(learningMode)) {
+    redirect("/admin/cohorts?notice=invalid-cohort-format");
+  }
+  if (
+    whatsappGroupUrl === undefined ||
+    (whatsappGroupUrl !== null &&
+      (() => {
+        try {
+          const url = new URL(whatsappGroupUrl);
+          return url.protocol !== "https:" || url.hostname !== "chat.whatsapp.com";
+        } catch {
+          return true;
+        }
+      })())
+  ) {
+    redirect("/admin/cohorts?notice=invalid-cohort-whatsapp");
+  }
+  if (!isCohortStatus(status)) {
+    redirect("/admin/cohorts?notice=invalid-cohort-status");
+  }
   if (
     teacherIds.length !== submittedTeacherIds.length ||
     teacherIds.some((teacherId) => !isUuid(teacherId))
@@ -1465,7 +1659,7 @@ export async function saveCohort(formData: FormData) {
       select: { id: true },
     }),
   ]);
-  if (!course) redirect("/admin/cohorts?notice=invalid-cohort");
+  if (!course) redirect("/admin/cohorts?notice=invalid-course-selection");
   if (teachers.length !== uniqueTeacherIds.length) {
     redirect("/admin/cohorts?notice=invalid-teacher-assignment");
   }
@@ -1475,13 +1669,51 @@ export async function saveCohort(formData: FormData) {
       const cohort = id
         ? await transaction.cohort.update({
             where: { id },
-            data: { courseId, name, startsAt, endsAt, seatLimit, status },
+            data: {
+              course: { connect: { id: courseId } },
+              name,
+              startsAt,
+              durationWeeks,
+              endsAt,
+              seatLimit,
+              status,
+              learningMode,
+              whatsappGroupUrl,
+            },
             select: { id: true },
           })
         : await transaction.cohort.create({
-            data: { courseId, name, startsAt, endsAt, seatLimit, status },
+            data: {
+              course: { connect: { id: courseId } },
+              name,
+              startsAt,
+              durationWeeks,
+              endsAt,
+              seatLimit,
+              status,
+              learningMode,
+              whatsappGroupUrl,
+            },
             select: { id: true },
           });
+
+      if (!id) {
+        const sessionDurationMs = 2 * 60 * 60 * 1000;
+        const weekDurationMs = 7 * 24 * 60 * 60 * 1000;
+        await transaction.liveSession.createMany({
+          data: Array.from({ length: durationWeeks }, (_, weekIndex) => {
+            const sessionStartsAt = new Date(
+              startsAt.getTime() + weekIndex * weekDurationMs,
+            );
+            return {
+              cohortId: cohort.id,
+              title: `Week ${weekIndex + 1} session`,
+              startsAt: sessionStartsAt,
+              endsAt: new Date(sessionStartsAt.getTime() + sessionDurationMs),
+            };
+          }),
+        });
+      }
 
       await transaction.cohortTeachingAssignment.deleteMany({
         where: { cohortId: cohort.id },
@@ -1506,7 +1738,7 @@ export async function saveCohort(formData: FormData) {
       error instanceof Prisma.PrismaClientKnownRequestError &&
       error.code === "P2025"
     ) {
-      redirect("/admin/cohorts?notice=invalid-cohort");
+      redirect("/admin/cohorts?notice=invalid-cohort-id");
     }
     throw error;
   }
@@ -1520,6 +1752,7 @@ export async function saveTrainingSession(formData: FormData) {
   const id = readText(formData, "id", 36);
   const cohortId = readText(formData, "cohortId", 36);
   const teacherId = readOptionalText(formData, "teacherId", 36);
+  const moduleId = readOptionalText(formData, "moduleId", 36);
   const title = readText(formData, "title", 160);
   const description = readOptionalText(formData, "description", 2000);
   const startsAt = readUtcDateTime(formData, "startsAt");
@@ -1534,6 +1767,8 @@ export async function saveTrainingSession(formData: FormData) {
     !isUuid(cohortId) ||
     teacherId === undefined ||
     (teacherId !== null && !isUuid(teacherId)) ||
+    moduleId === undefined ||
+    (moduleId !== null && !isUuid(moduleId)) ||
     !title ||
     description === undefined ||
     !startsAt ||
@@ -1549,9 +1784,17 @@ export async function saveTrainingSession(formData: FormData) {
 
   const cohort = await getPrismaClient().cohort.findUnique({
     where: { id: cohortId },
-    select: { id: true },
+    select: { id: true, courseId: true },
   });
   if (!cohort) redirect("/admin/sessions?notice=invalid-session");
+
+  if (moduleId) {
+    const courseModule = await getPrismaClient().courseModule.findFirst({
+      where: { id: moduleId, courseId: cohort.courseId },
+      select: { id: true },
+    });
+    if (!courseModule) redirect("/admin/sessions?notice=invalid-session");
+  }
 
   if (teacherId) {
     const teacher = await getPrismaClient().userProfile.findFirst({
@@ -1563,6 +1806,7 @@ export async function saveTrainingSession(formData: FormData) {
 
   const data = {
     cohortId,
+    moduleId,
     teacherId,
     title,
     description,

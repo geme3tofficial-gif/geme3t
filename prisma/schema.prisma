@@ -106,6 +106,12 @@ enum SessionStatus {
   CANCELLED
 }
 
+enum AttendanceStatus {
+  PENDING
+  PRESENT
+  ABSENT
+}
+
 enum CampaignStatus {
   DRAFT
   SCHEDULED
@@ -125,16 +131,18 @@ model UserProfile {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  applications        ScholarshipApplication[]   @relation("Applicant")
-  enrollments         Enrollment[]
-  teachingAssignments CohortTeachingAssignment[]
-  teachingSessions    LiveSession[]
-  courseSuggestions   CourseSuggestion[] @relation("CourseSuggestionSubmitter")
-  reviewedSuggestions CourseSuggestion[] @relation("CourseSuggestionReviewer")
-  cohortApplications  TeacherCohortApplication[] @relation("CohortApplicationTeacher")
+  applications               ScholarshipApplication[]   @relation("Applicant")
+  enrollments                Enrollment[]
+  teachingAssignments        CohortTeachingAssignment[]
+  teachingSessions           LiveSession[]
+  courseSuggestions          CourseSuggestion[]         @relation("CourseSuggestionSubmitter")
+  reviewedSuggestions        CourseSuggestion[]         @relation("CourseSuggestionReviewer")
+  cohortApplications         TeacherCohortApplication[] @relation("CohortApplicationTeacher")
   reviewedCohortApplications TeacherCohortApplication[] @relation("CohortApplicationReviewer")
-  createdCampaigns    PromoCampaign[]            @relation("CampaignCreator")
-  promoRedemptions    PromoRedemption[]
+  validatedAttendance        AttendanceRecord[]         @relation("AttendanceValidator")
+  courseActionLogs           TeacherCourseActionLog[]
+  createdCampaigns           PromoCampaign[]            @relation("CampaignCreator")
+  promoRedemptions           PromoRedemption[]
 
   @@map("user_profiles")
 }
@@ -153,33 +161,34 @@ model Course {
   createdAt           DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt           DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  applications ScholarshipApplication[]
-  cohorts      Cohort[]
-  modules      CourseModule[]
-  enrollments  Enrollment[]
-  campaigns    PromoCampaign[]
-  suggestions  CourseSuggestion[]
+  applications      ScholarshipApplication[]
+  cohorts           Cohort[]
+  modules           CourseModule[]
+  enrollments       Enrollment[]
+  campaigns         PromoCampaign[]
+  suggestions       CourseSuggestion[]
+  teacherActionLogs TeacherCourseActionLog[]
 
   @@index([status, category])
   @@map("courses")
 }
 
 model CourseSuggestion {
-  id             String                 @id @default(uuid()) @db.Uuid
-  title          String
-  category       String
-  description    String                 @db.Text
-  durationWeeks  Int                    @map("duration_weeks")
-  status         CourseSuggestionStatus @default(PENDING)
-  suggestedById  String                 @map("suggested_by_id") @db.Uuid
-  suggestedBy    UserProfile            @relation("CourseSuggestionSubmitter", fields: [suggestedById], references: [id], onDelete: Cascade)
-  reviewedById   String?                @map("reviewed_by_id") @db.Uuid
-  reviewedBy     UserProfile?           @relation("CourseSuggestionReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
-  courseId       String?                @unique @map("course_id") @db.Uuid
-  course         Course?                @relation(fields: [courseId], references: [id], onDelete: SetNull)
-  reviewedAt     DateTime?              @map("reviewed_at") @db.Timestamptz(6)
-  createdAt      DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime               @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id            String                 @id @default(uuid()) @db.Uuid
+  title         String
+  category      String
+  description   String                 @db.Text
+  durationWeeks Int                    @map("duration_weeks")
+  status        CourseSuggestionStatus @default(PENDING)
+  suggestedById String                 @map("suggested_by_id") @db.Uuid
+  suggestedBy   UserProfile            @relation("CourseSuggestionSubmitter", fields: [suggestedById], references: [id], onDelete: Cascade)
+  reviewedById  String?                @map("reviewed_by_id") @db.Uuid
+  reviewedBy    UserProfile?           @relation("CourseSuggestionReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  courseId      String?                @unique @map("course_id") @db.Uuid
+  course        Course?                @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  reviewedAt    DateTime?              @map("reviewed_at") @db.Timestamptz(6)
+  createdAt     DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime               @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@index([status, createdAt])
   @@index([suggestedById, createdAt])
@@ -271,21 +280,24 @@ model ScholarshipApplication {
 }
 
 model Cohort {
-  id        String       @id @default(uuid()) @db.Uuid
-  courseId  String       @map("course_id") @db.Uuid
-  course    Course       @relation(fields: [courseId], references: [id], onDelete: Restrict)
-  name      String
-  seatLimit Int?         @map("seat_limit")
-  startsAt  DateTime     @map("starts_at") @db.Timestamptz(6)
-  endsAt    DateTime?    @map("ends_at") @db.Timestamptz(6)
-  status    CohortStatus @default(PLANNED)
-  createdAt DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id               String       @id @default(uuid()) @db.Uuid
+  courseId         String       @map("course_id") @db.Uuid
+  course           Course       @relation(fields: [courseId], references: [id], onDelete: Restrict)
+  name             String
+  seatLimit        Int?         @map("seat_limit")
+  startsAt         DateTime     @map("starts_at") @db.Timestamptz(6)
+  durationWeeks    Int          @default(12) @map("duration_weeks")
+  endsAt           DateTime?    @map("ends_at") @db.Timestamptz(6)
+  status           CohortStatus @default(PLANNED)
+  learningMode     LearningMode @default(ONLINE) @map("learning_mode")
+  whatsappGroupUrl String?      @map("whatsapp_group_url")
+  createdAt        DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  enrollments  Enrollment[]
-  teachers     CohortTeachingAssignment[]
-  sessions     LiveSession[]
-  applications ScholarshipApplication[]
+  enrollments         Enrollment[]
+  teachers            CohortTeachingAssignment[]
+  sessions            LiveSession[]
+  applications        ScholarshipApplication[]
   teacherApplications TeacherCohortApplication[]
 
   @@unique([courseId, name])
@@ -306,16 +318,16 @@ model CohortTeachingAssignment {
 }
 
 model TeacherCohortApplication {
-  id           String                          @id @default(uuid()) @db.Uuid
-  cohortId     String                          @map("cohort_id") @db.Uuid
-  cohort       Cohort                          @relation(fields: [cohortId], references: [id], onDelete: Cascade)
-  teacherId    String                          @map("teacher_id") @db.Uuid
-  teacher      UserProfile                     @relation("CohortApplicationTeacher", fields: [teacherId], references: [id], onDelete: Cascade)
-  status       TeacherCohortApplicationStatus  @default(PENDING)
-  appliedAt    DateTime                        @default(now()) @map("applied_at") @db.Timestamptz(6)
-  reviewedById String?                         @map("reviewed_by_id") @db.Uuid
-  reviewedBy   UserProfile?                    @relation("CohortApplicationReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
-  reviewedAt   DateTime?                       @map("reviewed_at") @db.Timestamptz(6)
+  id           String                         @id @default(uuid()) @db.Uuid
+  cohortId     String                         @map("cohort_id") @db.Uuid
+  cohort       Cohort                         @relation(fields: [cohortId], references: [id], onDelete: Cascade)
+  teacherId    String                         @map("teacher_id") @db.Uuid
+  teacher      UserProfile                    @relation("CohortApplicationTeacher", fields: [teacherId], references: [id], onDelete: Cascade)
+  status       TeacherCohortApplicationStatus @default(PENDING)
+  appliedAt    DateTime                       @default(now()) @map("applied_at") @db.Timestamptz(6)
+  reviewedById String?                        @map("reviewed_by_id") @db.Uuid
+  reviewedBy   UserProfile?                   @relation("CohortApplicationReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedAt   DateTime?                      @map("reviewed_at") @db.Timestamptz(6)
 
   @@unique([cohortId, teacherId])
   @@index([status, appliedAt])
@@ -340,6 +352,7 @@ model Enrollment {
   updatedAt     DateTime                @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   lessonProgress LessonProgress[]
+  attendance     AttendanceRecord[]
 
   @@index([learnerId, status])
   @@index([cohortId, status])
@@ -357,7 +370,9 @@ model CourseModule {
   createdAt   DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt   DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  lessons Lesson[]
+  lessons    Lesson[]
+  sessions   LiveSession[]
+  actionLogs TeacherCourseActionLog[]
 
   @@unique([courseId, sortOrder])
   @@map("course_modules")
@@ -377,7 +392,7 @@ model Lesson {
   createdAt       DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  progress LessonProgress[]
+  progress     LessonProgress[]
   contentItems LessonContentItem[]
 
   @@unique([moduleId, sortOrder])
@@ -385,17 +400,17 @@ model Lesson {
 }
 
 model LessonContentItem {
-  id          String   @id @default(uuid()) @db.Uuid
-  lessonId    String   @map("lesson_id") @db.Uuid
-  lesson      Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  id          String            @id @default(uuid()) @db.Uuid
+  lessonId    String            @map("lesson_id") @db.Uuid
+  lesson      Lesson            @relation(fields: [lessonId], references: [id], onDelete: Cascade)
   kind        LessonContentKind
   title       String?
-  body        String?  @db.Text
+  body        String?           @db.Text
   url         String?
-  fileName    String?  @map("file_name")
-  storagePath String?  @map("storage_path")
-  sortOrder   Int      @map("sort_order")
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  fileName    String?           @map("file_name")
+  storagePath String?           @map("storage_path")
+  sortOrder   Int               @map("sort_order")
+  createdAt   DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
 
   @@unique([lessonId, sortOrder])
   @@map("lesson_content_items")
@@ -418,24 +433,67 @@ model LessonProgress {
 }
 
 model LiveSession {
-  id          String        @id @default(uuid()) @db.Uuid
-  cohortId    String        @map("cohort_id") @db.Uuid
-  cohort      Cohort        @relation(fields: [cohortId], references: [id], onDelete: Cascade)
-  teacherId   String?       @map("teacher_id") @db.Uuid
-  teacher     UserProfile?  @relation(fields: [teacherId], references: [id], onDelete: SetNull)
+  id          String             @id @default(uuid()) @db.Uuid
+  cohortId    String             @map("cohort_id") @db.Uuid
+  cohort      Cohort             @relation(fields: [cohortId], references: [id], onDelete: Cascade)
+  moduleId    String?            @map("module_id") @db.Uuid
+  module      CourseModule?      @relation(fields: [moduleId], references: [id], onDelete: SetNull)
+  teacherId   String?            @map("teacher_id") @db.Uuid
+  teacher     UserProfile?       @relation(fields: [teacherId], references: [id], onDelete: SetNull)
   title       String
-  description String?       @db.Text
-  startsAt    DateTime      @map("starts_at") @db.Timestamptz(6)
-  endsAt      DateTime      @map("ends_at") @db.Timestamptz(6)
+  description String?            @db.Text
+  startsAt    DateTime           @map("starts_at") @db.Timestamptz(6)
+  endsAt      DateTime           @map("ends_at") @db.Timestamptz(6)
   location    String?
-  meetingUrl  String?       @map("meeting_url")
-  status      SessionStatus @default(SCHEDULED)
-  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  meetingUrl  String?            @map("meeting_url")
+  status      SessionStatus      @default(SCHEDULED)
+  attendance  AttendanceRecord[]
+  createdAt   DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@index([cohortId, startsAt])
   @@index([teacherId, startsAt])
   @@map("live_sessions")
+}
+
+model AttendanceRecord {
+  id            String           @id @default(uuid()) @db.Uuid
+  sessionId     String           @map("session_id") @db.Uuid
+  session       LiveSession      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  enrollmentId  String           @map("enrollment_id") @db.Uuid
+  enrollment    Enrollment       @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  status        AttendanceStatus @default(PENDING)
+  markedAt      DateTime         @default(now()) @map("marked_at") @db.Timestamptz(6)
+  validatedAt   DateTime?        @map("validated_at") @db.Timestamptz(6)
+  validatedById String?          @map("validated_by_id") @db.Uuid
+  validatedBy   UserProfile?     @relation("AttendanceValidator", fields: [validatedById], references: [id], onDelete: SetNull)
+  createdAt     DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([sessionId, enrollmentId])
+  @@index([sessionId, status])
+  @@index([enrollmentId, markedAt])
+  @@map("attendance_records")
+}
+
+model TeacherCourseActionLog {
+  id         String        @id @default(uuid()) @db.Uuid
+  teacherId  String        @map("teacher_id") @db.Uuid
+  teacher    UserProfile   @relation(fields: [teacherId], references: [id], onDelete: Restrict)
+  courseId   String        @map("course_id") @db.Uuid
+  course     Course        @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  moduleId   String?       @map("module_id") @db.Uuid
+  module     CourseModule? @relation(fields: [moduleId], references: [id], onDelete: SetNull)
+  action     String
+  entityType String        @map("entity_type")
+  entityId   String?       @map("entity_id")
+  details    Json?
+  createdAt  DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([courseId, createdAt])
+  @@index([moduleId, createdAt])
+  @@index([teacherId, createdAt])
+  @@map("teacher_course_action_logs")
 }
 
 model PromoCampaign {
@@ -473,4 +531,181 @@ model PromoRedemption {
   @@unique([campaignId, learnerId])
   @@index([campaignId, redeemedAt])
   @@map("promo_redemptions")
+}
+
+enum DigitalServiceQuoteStatus {
+  PENDING
+  COMPLETED
+  CANCELLED
+}
+
+enum DigitalServiceFinanceType {
+  REVENUE
+  EXPENSE
+}
+
+enum DigitalServicePaymentMethod {
+  CASH
+  TRANSFER
+  BOTH
+}
+
+model DigitalServiceCategory {
+  id        String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String
+  createdAt DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime                @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  services  DigitalServiceService[]
+
+  @@unique([name])
+  @@map("digital_service_categories")
+}
+
+model DigitalServiceService {
+  id         String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  categoryId String                    @map("category_id") @db.Uuid
+  category   DigitalServiceCategory    @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  name       String
+  unit       String                    @default("unit")
+  price      Decimal                   @db.Decimal(14, 2)
+  createdAt  DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime                  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  quoteItems DigitalServiceQuoteItem[]
+
+  @@unique([categoryId, name])
+  @@map("digital_services")
+}
+
+model DigitalServiceCustomer {
+  id             String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name           String
+  phone          String
+  couponCode     String?               @map("coupon_code")
+  serviceCount   Int                   @default(0) @map("service_count")
+  serviceAmount  Decimal               @default(0) @map("service_amount") @db.Decimal(14, 2)
+  creditBalance  Decimal               @default(0) @map("credit_balance") @db.Decimal(14, 2)
+  creditScore    Int                   @default(0) @map("credit_score")
+  redeemedAmount Decimal               @default(0) @map("redeemed_amount") @db.Decimal(14, 2)
+  referralCredit Decimal               @default(0) @map("referral_credit") @db.Decimal(14, 2)
+  createdAt      DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime              @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  quotes         DigitalServiceQuote[]
+
+  @@unique([phone])
+  @@unique([couponCode])
+  @@map("digital_service_customers")
+}
+
+model DigitalServiceAffiliate {
+  id                    String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                  String
+  phone                 String?
+  email                 String?
+  tier                  String                 @default("Custom")
+  notes                 String?
+  active                Boolean                @default(true)
+  discountPct           Decimal                @default(0) @map("discount_pct") @db.Decimal(5, 2)
+  commissionPct         Decimal                @default(0) @map("commission_pct") @db.Decimal(5, 2)
+  commissionScore       Decimal                @default(0) @map("commission_score") @db.Decimal(14, 2)
+  customerDiscountTotal Decimal                @default(0) @map("customer_discount_total") @db.Decimal(14, 2)
+  createdAt             DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime               @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  coupons               DigitalServiceCoupon[]
+
+  @@map("digital_service_affiliates")
+}
+
+model DigitalServiceCoupon {
+  id                  String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code                String                   @unique
+  tier                String                   @default("Custom")
+  customerPct         Decimal                  @default(0) @map("customer_pct") @db.Decimal(5, 2)
+  customerDirect      Decimal                  @default(0) @map("customer_direct") @db.Decimal(14, 2)
+  affiliatePct        Decimal                  @default(0) @map("affiliate_pct") @db.Decimal(5, 2)
+  affiliateId         String?                  @map("affiliate_id") @db.Uuid
+  affiliate           DigitalServiceAffiliate? @relation(fields: [affiliateId], references: [id], onDelete: SetNull)
+  referralOnly        Boolean                  @default(false) @map("referral_only")
+  redemptionThreshold Int                      @default(3) @map("redemption_threshold")
+  usageCount          Int                      @default(0) @map("usage_count")
+  createdAt           DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime                 @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  quotes              DigitalServiceQuote[]
+
+  @@map("digital_service_coupons")
+}
+
+model DigitalServiceQuote {
+  id               String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerId       String?                   @map("customer_id") @db.Uuid
+  customer         DigitalServiceCustomer?   @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  couponId         String?                   @map("coupon_id") @db.Uuid
+  coupon           DigitalServiceCoupon?     @relation(fields: [couponId], references: [id], onDelete: SetNull)
+  grossTotal       Decimal                   @default(0) @map("gross_total") @db.Decimal(14, 2)
+  directDiscount   Decimal                   @default(0) @map("direct_discount") @db.Decimal(14, 2)
+  couponDiscount   Decimal                   @default(0) @map("coupon_discount") @db.Decimal(14, 2)
+  payableTotal     Decimal                   @default(0) @map("payable_total") @db.Decimal(14, 2)
+  directCost       Decimal                   @default(0) @map("direct_cost") @db.Decimal(14, 2)
+  netProfit        Decimal                   @default(0) @map("net_profit") @db.Decimal(14, 2)
+  customerDiscount Decimal                   @default(0) @map("customer_discount") @db.Decimal(14, 2)
+  commissionEarned Decimal                   @default(0) @map("commission_earned") @db.Decimal(14, 2)
+  status           DigitalServiceQuoteStatus @default(PENDING)
+  createdAt        DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime                  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  items            DigitalServiceQuoteItem[]
+
+  @@map("digital_service_quotes")
+}
+
+model DigitalServiceQuoteItem {
+  id               String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  quoteId          String                 @map("quote_id") @db.Uuid
+  quote            DigitalServiceQuote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  serviceId        String?                @map("service_id") @db.Uuid
+  service          DigitalServiceService? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  name             String
+  unit             String
+  unitPrice        Decimal                @map("unit_price") @db.Decimal(14, 2)
+  quantity         Int
+  lineTotal        Decimal                @map("line_total") @db.Decimal(14, 2)
+  status           String                 @default("pending")
+  completedAt      DateTime?              @map("completed_at") @db.Timestamptz(6)
+  carryoverDate    DateTime?              @map("carryover_date") @db.Date
+  paymentChannels  String[]               @default([]) @map("payment_channels")
+  cashAmount       Decimal                @default(0) @map("cash_amount") @db.Decimal(14, 2)
+  transferAmount   Decimal                @default(0) @map("transfer_amount") @db.Decimal(14, 2)
+  redemptionAmount Decimal                @default(0) @map("redemption_amount") @db.Decimal(14, 2)
+  createdAt        DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("digital_service_quote_items")
+}
+
+model DigitalServiceDayClose {
+  date         DateTime @id @db.Date
+  pendingCount Int      @default(0) @map("pending_count")
+  closedAt     DateTime @default(now()) @map("closed_at") @db.Timestamptz(6)
+
+  @@map("digital_service_day_closes")
+}
+
+model DigitalServiceFinanceEntry {
+  id            String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  entryDate     DateTime                    @map("entry_date") @db.Date
+  type          DigitalServiceFinanceType
+  category      String
+  description   String?
+  amount        Decimal                     @db.Decimal(14, 2)
+  paymentMethod DigitalServicePaymentMethod @map("payment_method")
+  source        String                      @default("manual")
+  createdAt     DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([entryDate, type])
+  @@map("digital_service_finance_entries")
+}
+
+model DigitalServiceAppSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("digital_service_app_settings")
 }

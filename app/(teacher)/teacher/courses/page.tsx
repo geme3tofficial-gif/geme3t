@@ -4,6 +4,8 @@ import { CourseStatus } from "@prisma/client";
 import { submitCourseSuggestion } from "@/app/(admin)/admin/actions";
 import { requireCourseEditor } from "@/lib/course-editor-auth";
 import { getPrismaClient } from "@/lib/prisma";
+import { calculateTeacherCourseProgress } from "@/lib/teacher-course-progress";
+import { TeacherCourseDialog } from "./teacher-course-dialog";
 
 export const metadata: Metadata = {
   title: "Manage course content",
@@ -17,6 +19,14 @@ const notices: Record<string, string> = {
   "suggestion-submitted":
     "Your course proposal has been sent to an administrator for review.",
   "teacher-required": "Only teacher accounts can submit course proposals.",
+  "cohort-application-submitted":
+    "Your request to teach the cohort has been sent to an administrator.",
+  "cohort-application-exists":
+    "You already have a pending request or an approved assignment for that cohort.",
+  "cohort-no-longer-available":
+    "That cohort is no longer available for teaching requests.",
+  "invalid-cohort-application":
+    "Choose a valid cohort before expressing interest.",
 };
 
 function readableSuggestionStatus(status: string) {
@@ -26,7 +36,7 @@ function readableSuggestionStatus(status: string) {
 export default async function TeacherCoursesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ notice?: string }>;
+  searchParams: Promise<{ notice?: string; course?: string }>;
 }) {
   const { userId } = await requireCourseEditor();
   const prisma = getPrismaClient();
@@ -45,7 +55,29 @@ export default async function TeacherCoursesPage({
           title: true,
           category: true,
           status: true,
-          modules: { select: { id: true } },
+          modules: {
+            select: {
+              id: true,
+              lessons: {
+                where: { isPublished: true },
+                select: { id: true },
+              },
+            },
+          },
+          cohorts: {
+            where: { teachers: { some: { teacherId: userId } } },
+            select: {
+              enrollments: {
+                where: { status: { in: ["ACTIVE", "COMPLETED"] } },
+                select: {
+                  lessonProgress: {
+                    where: { status: "COMPLETED" },
+                    select: { lessonId: true },
+                  },
+                },
+              },
+            },
+          },
         },
       }),
       prisma.course.findMany({
@@ -61,6 +93,34 @@ export default async function TeacherCoursesPage({
           slug: true,
           title: true,
           category: true,
+          description: true,
+          durationWeeks: true,
+          modules: {
+            orderBy: { sortOrder: "asc" },
+            select: {
+              id: true,
+              title: true,
+              description: true,
+              _count: { select: { lessons: true } },
+            },
+          },
+          cohorts: {
+            where: {
+              status: { in: ["PLANNED", "OPEN"] },
+              startsAt: { gt: new Date() },
+            },
+            orderBy: { startsAt: "asc" },
+            select: {
+              id: true,
+              name: true,
+              startsAt: true,
+              status: true,
+              teacherApplications: {
+                where: { teacherId: userId },
+                select: { status: true },
+              },
+            },
+          },
         },
       }),
       prisma.course.findMany({
@@ -115,40 +175,68 @@ export default async function TeacherCoursesPage({
           </p>
         ) : (
           <ul>
-            {assignedCourses.map((course) => (
-              <li key={course.id}>
-                <div>
-                  <strong>{course.title}</strong>
-                  <span>
-                    {course.category} · {course.modules.length} modules ·{" "}
-                    {course.status.toLowerCase()}
-                  </span>
-                </div>
-                <div className="course-editor-heading-links">
-                  <Link
-                    className="text-link"
-                    href={`/teacher/courses/${course.id}/preview`}
-                  >
-                    Preview
-                  </Link>
-                  {course.status === CourseStatus.PUBLISHED && (
+            {assignedCourses.map((course) => {
+              const learners = course.cohorts.flatMap(({ enrollments }) => enrollments);
+              const lessonIds = course.modules.flatMap(({ lessons }) =>
+                lessons.map(({ id }) => id),
+              );
+              const progress = calculateTeacherCourseProgress(lessonIds, learners);
+              return (
+                <li key={course.id}>
+                  <div>
+                    <strong>{course.title}</strong>
+                    <span>
+                        {course.category} · {course.modules.length} modules ·{" "}
+                        {course.status.toLowerCase()}
+                    </span>
+                    <div className="teacher-course-progress">
+                        <div className="teacher-course-progress-heading">
+                          <span>Average learner progress</span>
+                          <strong>{progress}%</strong>
+                        </div>
+                        <div
+                          aria-label={`${progress}% average learner progress`}
+                          aria-valuemax={100}
+                          aria-valuemin={0}
+                          aria-valuenow={progress}
+                          className="progress-track"
+                          role="progressbar"
+                        >
+                          <span style={{ width: `${progress}%` }} />
+                        </div>
+                        <span>
+                          {learners.length
+                            ? `${learners.length} active or completed learners`
+                            : "No learners enrolled yet"}
+                        </span>
+                    </div>
+                  </div>
+                  <div className="course-editor-heading-links">
                     <Link
-                      className="text-link"
-                      href={`/${course.slug}`}
-                      target="_blank"
+                        className="text-link"
+                        href={`/teacher/courses/${course.id}/preview`}
                     >
-                      Applicant page
+                        Preview
                     </Link>
-                  )}
-                  <Link
-                    className="text-link"
-                    href={`/teacher/courses/${course.id}`}
-                  >
-                    Edit content
-                  </Link>
-                </div>
-              </li>
-            ))}
+                    {course.status === CourseStatus.PUBLISHED && (
+                        <Link
+                          className="text-link"
+                          href={`/${course.slug}`}
+                          target="_blank"
+                        >
+                          Applicant page
+                        </Link>
+                    )}
+                    <Link
+                        className="text-link"
+                        href={`/teacher/courses/${course.id}`}
+                    >
+                      Edit content
+                    </Link>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>
@@ -158,16 +246,17 @@ export default async function TeacherCoursesPage({
           <div>
             <h2>Published course catalogue</h2>
             <p>
-              Browse published courses. Ask an administrator to assign one to
-              your cohort before editing its content.
+              Open a course to review its modules and request assignment to an
+              available cohort. An administrator must approve your request
+              before you can manage its learners or content.
             </p>
           </div>
           <span className="workspace-count">{catalogueCourses.length} courses</span>
         </div>
         {catalogueCourses.length === 0 ? (
           <p className="campaign-empty">
-            There are no other published courses yet. You can suggest a new
-            course below.
+            There are no other published courses available right now. You can
+            suggest a new course below.
           </p>
         ) : (
           <ul>
@@ -177,13 +266,12 @@ export default async function TeacherCoursesPage({
                   <strong>{course.title}</strong>
                   <span>{course.category} · Published</span>
                 </div>
-                <Link
-                  className="text-link"
-                  href={`/${course.slug}`}
-                  target="_blank"
-                >
-                  View course
-                </Link>
+                <div className="course-editor-heading-links">
+                  <TeacherCourseDialog
+                    course={course}
+                    initiallyOpen={query.course === course.id}
+                  />
+                </div>
               </li>
             ))}
           </ul>

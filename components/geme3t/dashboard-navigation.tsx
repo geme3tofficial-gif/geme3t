@@ -16,12 +16,13 @@ type NavigationItem = {
 const navigation: Record<DashboardRole, NavigationItem[]> = {
   Student: [
     { href: "/dashboard", icon: "⌂", label: "Overview" },
-    { href: "/courses", icon: "▤", label: "My learning" },
-    { href: "/lms-redirect", icon: "▣", label: "Learning portal" },
+    { href: "/dashboard/learning", icon: "▤", label: "My learning" },
+    { href: "/dashboard/courses", icon: "◇", label: "Courses" },
     { href: "/contact", icon: "?", label: "Get support" },
   ],
   Administrator: [
     { href: "/admin", icon: "⌂", label: "Overview" },
+    { href: "/digital-service", icon: "▦", label: "Digital services" },
     { href: "/admin/courses", icon: "▤", label: "Courses" },
     { href: "/admin/scholarships", icon: "✦", label: "Scholarships" },
     { href: "/admin/applications", icon: "▤", label: "Applications" },

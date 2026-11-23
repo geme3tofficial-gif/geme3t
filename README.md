@@ -36,7 +36,7 @@ offers without creating fabricated application records.
 Prisma is intended for server-side use only. Check Supabase Auth and the
 `user_profiles.role` on the server before adding database reads or writes to
 protected workspace routes. Row-level security is enabled on every application
-table; no public Supabase Data API policies are created. The Auth trigger always
+table, including attendance and teacher activity logs; no public Supabase Data API policies are created. The Auth trigger always
 creates a `STUDENT` profile and ignores role values in user metadata.
 
 To grant an existing Supabase Auth account admin access, promote its matching
@@ -117,12 +117,33 @@ future cohorts for published courses on their dashboard, including cohort dates,
 assigned teachers, teacher-application counts, and scheduled sessions. A teacher
 must apply to a cohort and receive administrator approval before they can edit
 its course content. Applications are reviewed in **Admin → Cohorts**.
+Teachers can also request a published course from **Teacher → Course content**;
+approval is cohort-scoped and grants editing access only to that course.
+Teacher edits to modules, lessons, lesson materials, ordering, and sessions are
+recorded in the course activity log. Teachers can update scheduled sessions and
+review attendance for cohorts assigned to them.
 
 Administrators can configure optional onboarding fields by audience in
 **Admin → Scholarships → Onboarding fields**. Applicants who skip a configured profile field receive a secure email sign-in
 link after submitting; they must complete the deferred fields in `/dashboard`
-before `/lms-redirect` opens the learner portal. Students sign in with their
-application email and password at `/dashboard/sign-in`; first-time students can
+before their learner workspace unlocks. **My learning** at `/dashboard/learning`
+shows only that student's active course enrollments, published lessons, personal
+lesson progress, cohort start date and format, session teachers, and WhatsApp
+community link. The published catalogue is available separately at
+`/dashboard/courses`. Signed-in students can enroll in additional published
+courses by selecting an open future cohort; enrollment checks seat capacity and
+prevents duplicate active enrollment or applications. A completed application is
+linked to a learner enrollment when they open My learning; rejected and
+withdrawn applications are excluded.
+Students can mark attendance for completed sessions, and an administrator or a
+teacher approved for that cohort validates each record. Cohorts use a start
+date and duration in weeks; creating one generates one two-hour session per
+week at the same UTC weekday and time as the cohort start. Administrators and
+approved cohort teachers can add or edit individual sessions while a course is
+running. After a session ends, its assigned teacher can mark it complete,
+opening the student attendance submission and teacher review roster. Cohort
+format and the WhatsApp group URL are managed in **Admin → Cohorts**. Students
+sign in with their application email and password at `/dashboard/sign-in`; first-time students can
 set a password at `/dashboard/setup-password`, and returning students can reset
 one at `/dashboard/reset-password`. Configure Supabase Auth's redirect URL
 allow-list to include `/auth/callback` and `/auth/reset-password` on each

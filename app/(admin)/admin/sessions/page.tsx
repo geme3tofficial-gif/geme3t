@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
-import { SessionStatus } from "@prisma/client";
+import { AttendanceStatus, SessionStatus } from "@prisma/client";
 import { saveTrainingSession } from "@/app/(admin)/admin/actions";
+import { validateAttendance } from "@/app/(teacher)/teacher/actions";
 import { requireAdmin } from "@/lib/admin-auth";
 import { getPrismaClient } from "@/lib/prisma";
 
@@ -11,6 +12,10 @@ export const metadata: Metadata = {
 const notices: Record<string, string> = {
   "saved-session": "Training session saved.",
   "invalid-session": "Check the cohort, teacher, session details, and time range.",
+  "attendance-validated": "Attendance has been validated.",
+  "attendance-already-validated": "That attendance record has already been reviewed.",
+  "attendance-not-ready": "Attendance can only be reviewed after a completed session.",
+  "invalid-attendance": "The attendance review was invalid.",
 };
 
 function dateTimeValue(value: Date | null) {
@@ -33,8 +38,16 @@ function SessionFields({
     location: string | null;
     meetingUrl: string | null;
     status: SessionStatus;
+    moduleId: string | null;
   };
-  cohorts: { id: string; name: string; course: { title: string } }[];
+  cohorts: {
+    id: string;
+    name: string;
+    course: {
+      title: string;
+      modules: { id: string; title: string }[];
+    };
+  }[];
   teachers: { id: string; firstName: string; lastName: string; email: string | null }[];
 }) {
   return (
@@ -49,6 +62,26 @@ function SessionFields({
               {cohort.course.title} · {cohort.name}
             </option>
           ))}
+        </select>
+      </label>
+      <label>
+        Module (optional)
+        <select defaultValue={session?.moduleId ?? ""} name="moduleId">
+          <option value="">No module</option>
+          {cohorts
+            .flatMap((cohort) =>
+              cohort.course.modules.map((courseModule) => ({
+                ...courseModule,
+                cohortName: cohort.name,
+                courseTitle: cohort.course.title,
+              })),
+            )
+            .map((courseModule) => (
+              <option key={courseModule.id} value={courseModule.id}>
+                {courseModule.courseTitle} · {courseModule.cohortName} ·{" "}
+                {courseModule.title}
+              </option>
+            ))}
         </select>
       </label>
       <label>
@@ -135,7 +168,17 @@ export default async function AdminSessionsPage({
   await requireAdmin();
   const [cohorts, teachers, sessions, query] = await Promise.all([
     getPrismaClient().cohort.findMany({
-      include: { course: { select: { title: true } } },
+      include: {
+        course: {
+          select: {
+            title: true,
+            modules: {
+              orderBy: { sortOrder: "asc" },
+              select: { id: true, title: true },
+            },
+          },
+        },
+      },
       orderBy: { startsAt: "asc" },
     }),
     getPrismaClient().userProfile.findMany({
@@ -147,6 +190,22 @@ export default async function AdminSessionsPage({
       include: {
         cohort: { include: { course: { select: { title: true } } } },
         teacher: { select: { firstName: true, lastName: true } },
+        module: { select: { title: true } },
+        attendance: {
+          orderBy: { markedAt: "asc" },
+          select: {
+            id: true,
+            status: true,
+            enrollment: {
+              select: {
+                learner: {
+                  select: { firstName: true, lastName: true, email: true },
+                },
+              },
+            },
+            validatedBy: { select: { firstName: true, lastName: true } },
+          },
+        },
       },
       orderBy: { startsAt: "desc" },
     }),
@@ -189,7 +248,7 @@ export default async function AdminSessionsPage({
                   <div>
                     <h2>{session.title}</h2>
                     <p>
-                      {session.cohort.course.title} · {session.cohort.name} · {session.startsAt.toISOString().replace("T", " ").slice(0, 16)}–{session.endsAt.toISOString().replace("T", " ").slice(11, 16)} UTC · {session.teacher ? `${session.teacher.firstName} ${session.teacher.lastName}` : "Unassigned"} · {session.status.toLowerCase()}
+                      {session.cohort.course.title} · {session.cohort.name} · {session.module?.title ?? "No module"} · {session.startsAt.toISOString().replace("T", " ").slice(0, 16)}–{session.endsAt.toISOString().replace("T", " ").slice(11, 16)} UTC · {session.teacher ? `${session.teacher.firstName} ${session.teacher.lastName}` : "Unassigned"} · {session.status.toLowerCase()}
                     </p>
                   </div>
                 </div>
@@ -200,6 +259,40 @@ export default async function AdminSessionsPage({
                     teachers={teachers}
                   />
                 </form>
+                {session.attendance.length > 0 && (
+                  <section className="teacher-attendance-review">
+                    <h3>Attendance validation</h3>
+                    {session.attendance.map((record) => (
+                      <div className="learner-session-row" key={record.id}>
+                        <span>
+                          {record.enrollment.learner.firstName}{" "}
+                          {record.enrollment.learner.lastName}
+                          {record.enrollment.learner.email
+                            ? ` · ${record.enrollment.learner.email}`
+                            : ""}
+                        </span>
+                        {record.status === AttendanceStatus.PENDING ? (
+                          <form action={validateAttendance}>
+                            <input name="attendanceId" type="hidden" value={record.id} />
+                            <button className="button button--small" name="decision" type="submit" value={AttendanceStatus.PRESENT}>
+                              Validate present
+                            </button>
+                            <button className="course-suggestion-reject" name="decision" type="submit" value={AttendanceStatus.ABSENT}>
+                              Mark absent
+                            </button>
+                          </form>
+                        ) : (
+                          <span className={`workspace-status-pill is-${record.status.toLowerCase()}`}>
+                            {record.status.toLowerCase()}
+                            {record.validatedBy
+                              ? ` · ${record.validatedBy.firstName} ${record.validatedBy.lastName}`
+                              : ""}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </section>
+                )}
               </article>
             ))}
             {sessions.length === 0 && (

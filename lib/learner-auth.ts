@@ -25,6 +25,7 @@ export async function getLearnerSession() {
         take: 1,
         select: {
           id: true,
+          status: true,
           firstName: true,
           lastName: true,
           email: true,

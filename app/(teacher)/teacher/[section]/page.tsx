@@ -7,6 +7,7 @@ const sections = ["classes", "learners", "schedule", "resources"];
 
 type TeacherSectionProps = {
   params: Promise<{ section: string }>;
+  searchParams: Promise<{ notice?: string }>;
 };
 
 export function generateStaticParams() {
@@ -23,9 +24,17 @@ export async function generateMetadata({
 
 export default async function TeacherSectionRoute({
   params,
+  searchParams,
 }: TeacherSectionProps) {
   const { userId } = await requireCourseEditor();
-  const { section } = await params;
+  const [{ section }, query] = await Promise.all([params, searchParams]);
   if (!getWorkspaceSection("Teacher", section)) notFound();
-  return <WorkspaceSectionPage role="Teacher" section={section} userId={userId} />;
+  return (
+    <WorkspaceSectionPage
+      notice={query.notice}
+      role="Teacher"
+      section={section}
+      userId={userId}
+    />
+  );
 }

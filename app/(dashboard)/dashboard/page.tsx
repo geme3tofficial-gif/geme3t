@@ -118,7 +118,7 @@ export default async function DashboardPage() {
             Review your application and learning details here.
           </p>
         </div>
-        <Link className="button button--small" href="/courses">
+        <Link className="button button--small" href="/dashboard/courses">
           Explore courses
         </Link>
       </div>

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import {
   CohortStatus,
+  LearningMode,
   TeacherCohortApplicationStatus,
 } from "@prisma/client";
 import {
@@ -18,7 +19,18 @@ export const metadata: Metadata = {
 const notices: Record<string, string> = {
   "saved-cohort": "Training cohort saved.",
   "duplicate-cohort": "That course already has a cohort with this name.",
-  "invalid-cohort": "Check the course and cohort dates, then try again.",
+  "invalid-course-selection": "Select an available course.",
+  "invalid-cohort-name": "Enter a cohort name of 1 to 120 characters.",
+  "invalid-cohort-start": "Enter a valid cohort start date and time.",
+  "invalid-cohort-duration":
+    "Enter a cohort duration of 1 to 100 weeks.",
+  "invalid-cohort-seat-limit":
+    "Leave the seat limit blank for unlimited seats, or enter a whole number from 1 to 100,000.",
+  "invalid-cohort-format": "Choose Online, On-site, or Hybrid for the class format.",
+  "invalid-cohort-whatsapp":
+    "Enter a valid WhatsApp invite link from https://chat.whatsapp.com/ or leave it blank.",
+  "invalid-cohort-status": "Choose a valid cohort status.",
+  "invalid-cohort-id": "This cohort could not be found. Refresh the page and try again.",
   "invalid-teacher-assignment": "Choose valid teacher accounts and try again.",
   "invalid-teacher-application": "That teacher application could not be reviewed.",
   "teacher-application-already-reviewed":
@@ -45,9 +57,11 @@ function CohortFields({
     courseId: string;
     name: string;
     startsAt: Date;
-    endsAt: Date | null;
+    durationWeeks: number;
     seatLimit: number | null;
     status: CohortStatus;
+    learningMode: LearningMode;
+    whatsappGroupUrl: string | null;
   };
   courses: { id: string; title: string }[];
   teachers: { id: string; firstName: string; lastName: string; email: string | null }[];
@@ -79,11 +93,14 @@ function CohortFields({
         />
       </label>
       <label>
-        Ends at (UTC, optional)
+        Duration (weeks)
         <input
-          defaultValue={dateTimeValue(cohort?.endsAt ?? null)}
-          name="endsAt"
-          type="datetime-local"
+          defaultValue={cohort?.durationWeeks ?? 12}
+          max={100}
+          min={1}
+          name="durationWeeks"
+          required
+          type="number"
         />
       </label>
       <label>
@@ -98,6 +115,28 @@ function CohortFields({
         />
       </label>
       <label>
+        Class format
+        <select
+          defaultValue={cohort?.learningMode ?? LearningMode.ONLINE}
+          name="learningMode"
+          required
+        >
+          <option value={LearningMode.ONLINE}>Online</option>
+          <option value={LearningMode.ONSITE}>On-site</option>
+          <option value={LearningMode.HYBRID}>Hybrid</option>
+        </select>
+      </label>
+      <label className="admin-form-wide">
+        WhatsApp community group URL (optional)
+        <input
+          defaultValue={cohort?.whatsappGroupUrl ?? ""}
+          maxLength={500}
+          name="whatsappGroupUrl"
+          placeholder="https://chat.whatsapp.com/..."
+          type="url"
+        />
+      </label>
+      <label>
         Cohort status
         <select defaultValue={cohort?.status ?? CohortStatus.PLANNED} name="status">
           <option value={CohortStatus.PLANNED}>Planned</option>
@@ -108,7 +147,11 @@ function CohortFields({
         </select>
       </label>
       <p className="admin-schedule-hint admin-form-wide">
-        Only future cohorts marked “Open for applications” appear in the application choices. Set a seat limit to stop scholarship applications when full; leave blank for no limit. Enter times in UTC.
+        Cohort end date is calculated from the start date and duration. A
+        two-hour session is created for each week at the start date’s UTC
+        weekday and time. Add or update individual sessions while the cohort is
+        running. Set a seat limit to stop applications when full, or leave it
+        blank for no limit.
       </p>
       <fieldset className="cohort-teacher-access admin-form-wide">
         <legend>Approve teachers to view and edit this course</legend>
@@ -263,7 +306,10 @@ export default async function AdminCohortsPage({
             <div className="workspace-panel-heading">
               <div>
                 <h2>Add a cohort</h2>
-                <p>Set dates and approve the teachers who can manage this course.</p>
+                <p>
+                  Set the cohort start and duration, create its weekly sessions, and
+                  approve teachers who can manage the course.
+                </p>
               </div>
             </div>
             <form action={saveCohort} className="admin-edit-form">
@@ -383,6 +429,7 @@ export default async function AdminCohortsPage({
                       <th scope="col">Cohort</th>
                       <th scope="col">Course</th>
                       <th scope="col">Starts (UTC)</th>
+                      <th scope="col">Duration</th>
                       <th scope="col">Status</th>
                       <th scope="col">Teachers</th>
                       <th scope="col">Teacher applicants</th>
@@ -404,6 +451,7 @@ export default async function AdminCohortsPage({
                             timeZone: "UTC",
                           }).format(cohort.startsAt)}
                         </td>
+                        <td>{cohort.durationWeeks} weeks</td>
                         <td>
                           <span className={`workspace-status-pill is-${cohort.status.toLowerCase()}`}>
                             {cohort.status.replaceAll("_", " ").toLowerCase()}
@@ -436,9 +484,11 @@ export default async function AdminCohortsPage({
                                   courseId: cohort.courseId,
                                   name: cohort.name,
                                   startsAt: cohort.startsAt,
-                                  endsAt: cohort.endsAt,
+                                  durationWeeks: cohort.durationWeeks,
                                   seatLimit: cohort.seatLimit,
                                   status: cohort.status,
+                                  learningMode: cohort.learningMode,
+                                  whatsappGroupUrl: cohort.whatsappGroupUrl,
                                 }}
                                 courses={courses}
                                 selectedTeacherIds={cohort.teachers.map(

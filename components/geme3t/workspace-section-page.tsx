@@ -1,5 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { TeacherClassActionsDialog } from "@/components/geme3t/teacher-class-actions-dialog";
+import { calculateTeacherCourseProgress } from "@/lib/teacher-course-progress";
+import { normalizeWhatsAppNumber } from "@/lib/phone";
 import type { WorkspaceRole } from "./workspace-shell";
 import { getPrismaClient } from "@/lib/prisma";
 
@@ -224,9 +227,57 @@ async function getConnectedSectionContent(
             name: true,
             status: true,
             startsAt: true,
-            course: { select: { title: true } },
-            _count: {
-              select: { enrollments: { where: { status: "ACTIVE" } } },
+            course: {
+              select: {
+                id: true,
+                title: true,
+                modules: {
+                  orderBy: { sortOrder: "asc" },
+                  select: {
+                    id: true,
+                    title: true,
+                    lessons: {
+                      where: { isPublished: true },
+                      select: { id: true },
+                    },
+                  },
+                },
+              },
+            },
+            enrollments: {
+              where: { status: { in: ["ACTIVE", "COMPLETED"] } },
+              orderBy: [{ learner: { lastName: "asc" } }, { learner: { firstName: "asc" } }],
+              select: {
+                id: true,
+                learner: {
+                  select: { firstName: true, lastName: true, email: true, phone: true },
+                },
+                lessonProgress: {
+                  where: { status: "COMPLETED" },
+                  select: { lessonId: true },
+                },
+              },
+            },
+            sessions: {
+              where: { status: { in: ["SCHEDULED", "COMPLETED"] } },
+              orderBy: { startsAt: "desc" },
+              take: 10,
+              select: {
+                id: true,
+                title: true,
+                startsAt: true,
+                location: true,
+                meetingUrl: true,
+                endsAt: true,
+                status: true,
+                attendance: {
+                  select: {
+                    id: true,
+                    status: true,
+                    enrollmentId: true,
+                  },
+                },
+              },
             },
           },
         },
@@ -234,7 +285,7 @@ async function getConnectedSectionContent(
     });
     return (
       <section className="dashboard-panel workspace-data-list">
-        <h2>Assigned classes</h2>
+        <h2>Assigned classes and course actions</h2>
         {assignments.length === 0 ? (
           <p className="campaign-empty">
             No cohorts have been assigned to your teacher account yet. Ask an
@@ -248,9 +299,9 @@ async function getConnectedSectionContent(
                   <th scope="col">Course</th>
                   <th scope="col">Cohort</th>
                   <th scope="col">Status</th>
-                  <th scope="col">Active learners</th>
+                  <th scope="col">Learner progress</th>
                   <th scope="col">Start date</th>
-                  <th scope="col">Course content</th>
+                  <th scope="col">Class actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -259,14 +310,61 @@ async function getConnectedSectionContent(
                     <td>{cohort.course.title}</td>
                     <th scope="row">{cohort.name}</th>
                     <td><span className="workspace-status-pill">{cohort.status.toLowerCase()}</span></td>
-                    <td>{cohort._count.enrollments}</td>
+                    <td>
+                      {(() => {
+                        const lessonIds = cohort.course.modules.flatMap(({ lessons }) =>
+                          lessons.map(({ id }) => id),
+                        );
+                        const progress = calculateTeacherCourseProgress(
+                          lessonIds,
+                          cohort.enrollments,
+                        );
+                        return (
+                          <div className="teacher-course-progress teacher-course-progress-compact">
+                            <strong>{progress}%</strong>
+                            <div
+                              aria-label={`${progress}% learner progress for ${cohort.name}`}
+                              className="progress-track"
+                              role="progressbar"
+                              aria-valuemax={100}
+                              aria-valuemin={0}
+                              aria-valuenow={progress}
+                            >
+                              <span style={{ width: `${progress}%` }} />
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </td>
                     <td>
                       {new Intl.DateTimeFormat("en", {
                         dateStyle: "medium",
                         timeZone: "UTC",
                       }).format(cohort.startsAt)}
                     </td>
-                    <td><Link className="text-link" href="/teacher/courses">View assigned courses</Link></td>
+                    <td className="teacher-class-actions-cell">
+                      <TeacherClassActionsDialog
+                        cohortId={cohort.id}
+                        cohortName={cohort.name}
+                        courseId={cohort.course.id}
+                        courseTitle={cohort.course.title}
+                        learners={cohort.enrollments.map((enrollment) => ({
+                          id: enrollment.id,
+                          name: `${enrollment.learner.firstName} ${enrollment.learner.lastName}`.trim(),
+                          email: enrollment.learner.email,
+                          whatsappNumber: enrollment.learner.phone
+                            ? normalizeWhatsAppNumber(enrollment.learner.phone, "NG")
+                                ?.replace(/^\+/, "") ?? null
+                            : null,
+                        }))}
+                        modules={cohort.course.modules}
+                        sessions={cohort.sessions.map((session) => ({
+                          ...session,
+                          startsAt: session.startsAt.toISOString(),
+                          endsAt: session.endsAt.toISOString(),
+                        }))}
+                      />
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -389,14 +487,28 @@ export async function WorkspaceSectionPage({
   role,
   section,
   userId,
+  notice,
 }: {
   role: WorkspaceRole;
   section: string;
   userId?: string;
+  notice?: string;
 }) {
   const content = getWorkspaceSection(role, section);
   if (!content) notFound();
   const connectedContent = await getConnectedSectionContent(role, section, userId);
+  const teacherClassNotices: Record<string, string> = {
+    "session-started":
+      "Your class session has started and is now visible to learners.",
+    "session-already-active":
+      "A scheduled or active session overlaps this time for the cohort.",
+    "invalid-session":
+      "The class session details were invalid or the cohort is no longer assigned to you.",
+    "attendance-validated": "Attendance was validated and the learner course session status has been updated.",
+    "attendance-already-validated": "That attendance record has already been reviewed.",
+    "attendance-not-ready": "Attendance can only be validated after a completed session and a learner submission.",
+    "invalid-attendance": "The attendance decision was invalid.",
+  };
 
   return (
     <>
@@ -412,6 +524,14 @@ export async function WorkspaceSectionPage({
           </Link>
         )}
       </div>
+      {role === "Teacher" &&
+        section === "classes" &&
+        notice &&
+        teacherClassNotices[notice] && (
+          <p className="admin-notice" role="status">
+            {teacherClassNotices[notice]}
+          </p>
+        )}
       <div className="workspace-section-grid">
         {connectedContent ?? (content.emptyMessage && (
           <section className="dashboard-panel">
