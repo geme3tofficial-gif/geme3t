@@ -27,6 +27,10 @@ Postgres.
 
 `DATABASE_URL` should use Supabase's transaction pooler for the application.
 `DIRECT_URL` should use the direct database connection for Prisma migrations.
+Set `CUSTOMER_SHARE_LINK_ENCRYPTION_KEY` to a 32-byte hexadecimal key generated
+with the command in `.env.example`. Keep the same key in every deployment that
+shares the customer database; changing it prevents admins from displaying
+previously generated links.
 The schema defines profiles and roles, courses and scholarships, applications,
 cohorts and teaching assignments, enrollments, modules and lessons, learner
 progress, live sessions, and promotions. The seed data is in

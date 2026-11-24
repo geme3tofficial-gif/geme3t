@@ -26,6 +26,7 @@ export type DigitalServiceOperation = {
   quoteCommission: number;
   customerCreditPct: number;
   customer: {
+    id: string;
     name: string;
     phone: string;
     serviceCount: number;

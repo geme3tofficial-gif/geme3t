@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/admin-auth";
+import { createCustomerPerformanceToken } from "@/lib/domain/digital-service/customer-performance-token";
 import { getPrismaClient } from "@/lib/prisma";
 import { calculateQuote } from "@/lib/domain/digital-service/calculations";
 
@@ -29,6 +30,7 @@ export async function createSaleCustomer(input: { name: string; phone: string })
     suffix++;
   }
 
+  const shareToken = createCustomerPerformanceToken();
   return prisma.$transaction(async (tx) => {
     await tx.digitalServiceCoupon.create({
       data: {
@@ -41,7 +43,13 @@ export async function createSaleCustomer(input: { name: string; phone: string })
       },
     });
     const customer = await tx.digitalServiceCustomer.create({
-      data: { name, phone, couponCode: code },
+      data: {
+        name,
+        phone,
+        couponCode: code,
+        shareTokenHash: shareToken.shareTokenHash,
+        shareTokenEncrypted: shareToken.shareTokenEncrypted,
+      },
     });
     revalidatePath("/digital-service/customers");
     revalidatePath("/digital-service/coupons");

@@ -55,6 +55,7 @@ export async function getDigitalServiceSalesReportData() {
         customerCreditPct: creditPct,
         customer: quote.customer
           ? {
+              id: quote.customer.id,
               name: quote.customer.name,
               phone: quote.customer.phone,
               serviceCount: quote.customer.serviceCount,

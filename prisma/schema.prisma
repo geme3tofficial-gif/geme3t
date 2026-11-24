@@ -581,6 +581,8 @@ model DigitalServiceCustomer {
   name           String
   phone          String
   couponCode     String?               @map("coupon_code")
+  shareTokenHash String?               @unique @map("share_token_hash")
+  shareTokenEncrypted String?          @map("share_token_encrypted")
   serviceCount   Int                   @default(0) @map("service_count")
   serviceAmount  Decimal               @default(0) @map("service_amount") @db.Decimal(14, 2)
   creditBalance  Decimal               @default(0) @map("credit_balance") @db.Decimal(14, 2)

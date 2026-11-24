@@ -4,7 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { formatNaira } from "@/lib/domain/digital-service/format";
 import type { DigitalServiceOperation } from "@/lib/domain/digital-service/sales-types";
-import { completeDigitalServiceItem } from "@/app/(digital-service)/digital-service/sales-reports/actions";
+import {
+  completeDigitalServiceItem,
+  completeDigitalServiceItems,
+} from "@/app/(digital-service)/digital-service/sales-reports/actions";
 import { deleteSale } from "@/app/(digital-service)/digital-service/sales/actions";
 
 const paymentChannels = [
@@ -31,6 +34,26 @@ export function SalesReportOperations({
   const [redemptionAmount, setRedemptionAmount] = useState(0);
   const [couponCode, setCouponCode] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
+  const [bulkPaymentOpen, setBulkPaymentOpen] = useState(false);
+  const [bulkCashAmount, setBulkCashAmount] = useState(0);
+  const [bulkTransferAmount, setBulkTransferAmount] = useState(0);
+  const pendingOperations = useMemo(
+    () => operations.filter((operation) => operation.status === "pending"),
+    [operations],
+  );
+  const selectedOperations = useMemo(
+    () => selectedItemIds
+      .map((id) => pendingOperations.find((operation) => operation.id === id))
+      .filter((operation): operation is DigitalServiceOperation => Boolean(operation)),
+    [pendingOperations, selectedItemIds],
+  );
+  const selectedTotalCents = selectedOperations.reduce(
+    (total, operation) => total + Math.round(operation.lineTotal * 100),
+    0,
+  );
+  const bulkPaymentTotalCents = Math.round((bulkCashAmount + bulkTransferAmount) * 100);
+  const selectionCustomerId = selectedOperations[0]?.customer?.id ?? null;
 
   const availableCredit = activeOperation
     ? activeOperation.customer
@@ -116,6 +139,54 @@ export function SalesReportOperations({
     setCouponCode(operation.customer?.couponCode ?? "");
   }
 
+  function toggleSelectedOperation(operation: DigitalServiceOperation, checked: boolean) {
+    setSelectedItemIds((current) => {
+      if (!checked) return current.filter((id) => id !== operation.id);
+      if (current.length >= 50) {
+        toast.error("Group payments can include up to 50 services.");
+        return current;
+      }
+      const currentCustomerId = current.length
+        ? pendingOperations.find((item) => item.id === current[0])?.customer?.id ?? null
+        : operation.customer?.id ?? null;
+      if (current.length && currentCustomerId !== (operation.customer?.id ?? null)) {
+        toast.error("Select pending services for one customer at a time.");
+        return current;
+      }
+      return [...current, operation.id];
+    });
+  }
+
+  function openBulkPayment() {
+    setBulkCashAmount(selectedTotalCents / 100);
+    setBulkTransferAmount(0);
+    setBulkPaymentOpen(true);
+  }
+
+  async function completeGroupPayment() {
+    if (
+      isSubmitting ||
+      selectedOperations.length === 0 ||
+      selectedOperations.length !== selectedItemIds.length ||
+      bulkPaymentTotalCents !== selectedTotalCents
+    ) return;
+    setIsSubmitting(true);
+    try {
+      const result = await completeDigitalServiceItems({
+        itemIds: selectedOperations.map((operation) => operation.id),
+        cashAmount: Math.round(bulkCashAmount * 100) / 100,
+        transferAmount: Math.round(bulkTransferAmount * 100) / 100,
+      });
+      toast.success(`${result.completedCount} services paid and completed together.`);
+      setSelectedItemIds([]);
+      setBulkPaymentOpen(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not complete the group payment.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
   function toggleChannel(channel: PaymentChannel, checked: boolean) {
     setChannels((current) =>
       checked
@@ -179,14 +250,56 @@ export function SalesReportOperations({
     <>
       <section className="dashboard-panel" style={{ marginBottom: 16 }}>
         <h2>{title}</h2>
+        <div className="digital-service-bulk-payment-bar">
+          <div>
+            <strong>{selectedOperations.length} pending service{selectedOperations.length === 1 ? "" : "s"} selected</strong>
+            <span>Select services for one customer only. Group payments support cash and/or transfer.</span>
+          </div>
+          <div className="digital-service-bulk-payment-actions">
+            <button
+              className="btn btn-primary"
+              type="button"
+              disabled={selectedOperations.length === 0 || isSubmitting}
+              onClick={openBulkPayment}
+            >
+              Pay selected ({formatNaira(selectedTotalCents / 100)})
+            </button>
+            {selectedOperations.length > 0 ? (
+              <button
+                className="btn btn-gray"
+                type="button"
+                disabled={isSubmitting}
+                onClick={() => setSelectedItemIds([])}
+              >
+                Clear selection
+              </button>
+            ) : null}
+          </div>
+        </div>
         <div style={{ overflowX: "auto" }}>
           <table className="admin-table">
             <thead>
-              <tr><th>Sale</th><th>Customer</th><th>Service</th><th>Quantity</th><th>Amount</th><th>Status</th><th>Transaction date</th><th>Actions</th></tr>
+              <tr><th>Select</th><th>Sale</th><th>Customer</th><th>Service</th><th>Quantity</th><th>Amount</th><th>Status</th><th>Transaction date</th><th>Actions</th></tr>
             </thead>
             <tbody>
-              {operations.map((operation) => (
+              {operations.map((operation) => {
+                const customerId = operation.customer?.id ?? null;
+                const isDifferentCustomer = selectedOperations.length > 0 && customerId !== selectionCustomerId;
+                return (
                 <tr key={operation.id}>
+                  <td>
+                    <input
+                      type="checkbox"
+                      aria-label={`Select ${operation.name} for group payment`}
+                      checked={selectedItemIds.includes(operation.id)}
+                      disabled={
+                        operation.status !== "pending" ||
+                        (isDifferentCustomer && !selectedItemIds.includes(operation.id)) ||
+                        (selectedItemIds.length >= 50 && !selectedItemIds.includes(operation.id))
+                      }
+                      onChange={(event) => toggleSelectedOperation(operation, event.target.checked)}
+                    />
+                  </td>
                   <td>{operation.quoteId.slice(0, 8)}</td>
                   <td>{operation.customer?.name ?? "Guest"}</td>
                   <td>{operation.name}</td>
@@ -216,12 +329,105 @@ export function SalesReportOperations({
                     </button>
                   </td>
                 </tr>
-              ))}
-              {operations.length === 0 ? <tr><td className="empty" colSpan={8}>No sales items found.</td></tr> : null}
+                );
+              })}
+              {operations.length === 0 ? <tr><td className="empty" colSpan={9}>No sales items found.</td></tr> : null}
             </tbody>
           </table>
         </div>
       </section>
+
+      {bulkPaymentOpen ? (
+        <div
+          className="modal-overlay open"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !isSubmitting) setBulkPaymentOpen(false);
+          }}
+        >
+          <div className="quote-modal" role="dialog" aria-modal="true" aria-labelledby="bulk-payment-title">
+            <div className="modal-head">
+              <div className="modal-title-row">
+                <h2 id="bulk-payment-title">Pay selected services together</h2>
+                <button className="btn btn-gray" type="button" onClick={() => setBulkPaymentOpen(false)} disabled={isSubmitting}>
+                  Close
+                </button>
+              </div>
+            </div>
+            <div className="modal-body">
+              <p>
+                {selectedOperations.length} services for {selectedOperations[0]?.customer?.name ?? "Guest"}.
+                Payment is allocated across selected services by their amounts.
+              </p>
+              <div className="card digital-service-bulk-payment-items">
+                {selectedOperations.map((operation) => (
+                  <div className="line" key={operation.id}>
+                    <span>{operation.name} × {operation.quantity} {operation.unit} · sale #{operation.quoteId.slice(0, 8)}</span>
+                    <b>{formatNaira(operation.lineTotal)}</b>
+                  </div>
+                ))}
+                <div className="line">
+                  <strong>Total due</strong>
+                  <strong>{formatNaira(selectedTotalCents / 100)}</strong>
+                </div>
+              </div>
+              <div className="grid-2">
+                <label className="field">
+                  <span>Cash amount</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={bulkCashAmount}
+                    onChange={(event) => setBulkCashAmount(Math.max(0, Number(event.target.value) || 0))}
+                  />
+                </label>
+                <label className="field">
+                  <span>Transfer amount</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={bulkTransferAmount}
+                    onChange={(event) => setBulkTransferAmount(Math.max(0, Number(event.target.value) || 0))}
+                  />
+                </label>
+              </div>
+              <div className="line">
+                <span>Payment total</span>
+                <b>{formatNaira(bulkPaymentTotalCents / 100)} / {formatNaira(selectedTotalCents / 100)}</b>
+              </div>
+              {bulkPaymentTotalCents !== selectedTotalCents ? (
+                <p className="digital-service-payment-error">
+                  Cash and transfer must equal the total due for the selected services.
+                </p>
+              ) : null}
+              <p>Coupon redemption remains available through each service&apos;s individual payment flow.</p>
+            </div>
+            <div className="modal-footer">
+              <span />
+              <div className="modal-footer-right">
+                <button className="btn btn-gray" type="button" onClick={() => setBulkPaymentOpen(false)} disabled={isSubmitting}>
+                  Cancel
+                </button>
+                <button
+                  className="btn btn-primary"
+                  type="button"
+                  onClick={() => void completeGroupPayment()}
+                  disabled={
+                    isSubmitting ||
+                    selectedOperations.length === 0 ||
+                    selectedOperations.length !== selectedItemIds.length ||
+                    bulkPaymentTotalCents !== selectedTotalCents
+                  }
+                >
+                  {isSubmitting ? "Processing..." : "Confirm group payment"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {detailsOperation ? (
         <div

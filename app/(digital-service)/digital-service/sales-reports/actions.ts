@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import type { Prisma } from "@prisma/client";
 import { requireAdmin } from "@/lib/admin-auth";
 import { getPrismaClient } from "@/lib/prisma";
 
@@ -40,6 +41,204 @@ function startOfBusinessDate(dateText: string, timeZone: string) {
 
 function roundCurrency(amount: number) {
   return Math.round((amount + Number.EPSILON) * 100) / 100;
+}
+
+type CompletionInput = {
+  itemId: string;
+  channels: Array<"cash" | "transfer" | "coupon_redemption">;
+  cashAmount: number;
+  transferAmount: number;
+  redemptionAmount: number;
+  couponCode: string;
+};
+
+async function completeDigitalServiceItemInTransaction(
+  tx: Prisma.TransactionClient,
+  input: CompletionInput,
+) {
+  const { itemId } = input;
+  const cashAmount = input.cashAmount;
+  const transferAmount = input.transferAmount;
+  const redemptionAmount = input.redemptionAmount;
+  const channels = [...new Set(input.channels)];
+  if (!itemId) throw new Error("Quote item is required.");
+  if (
+    !channels.length ||
+    channels.some((channel) => !["cash", "transfer", "coupon_redemption"].includes(channel))
+  ) {
+    throw new Error("Select at least one valid payment channel.");
+  }
+  if (![cashAmount, transferAmount, redemptionAmount].every(
+    (amount) => typeof amount === "number" && Number.isFinite(amount) && amount >= 0 &&
+      Math.abs(amount * 100 - Math.round(amount * 100)) < 0.000001,
+  )) {
+    throw new Error("Payment amounts must be valid non-negative amounts.");
+  }
+  if (channels.includes("cash") !== (cashAmount > 0)) {
+    throw new Error("Select cash only when a cash amount is entered.");
+  }
+  if (channels.includes("transfer") !== (transferAmount > 0)) {
+    throw new Error("Select transfer only when a transfer amount is entered.");
+  }
+  if (channels.includes("coupon_redemption") !== (redemptionAmount > 0)) {
+    throw new Error("Select coupon redemption only when a redemption amount is entered.");
+  }
+
+  const item = await tx.digitalServiceQuoteItem.findUnique({
+    where: { id: itemId },
+    include: { quote: { include: { customer: true } } },
+  });
+  if (!item) throw new Error("Quote item not found.");
+  if (item.status === "completed") throw new Error("This service was already completed.");
+
+  const lineTotal = Number(item.lineTotal);
+  const toCents = (amount: number) => Math.round(amount * 100);
+  if (toCents(cashAmount) + toCents(transferAmount) + toCents(redemptionAmount) !== toCents(lineTotal)) {
+    throw new Error(`Payment must total ${lineTotal.toFixed(2)}.`);
+  }
+
+  const quote = item.quote;
+  const customer = quote.customer;
+  const couponCode = input.couponCode.trim().toUpperCase();
+  if (redemptionAmount > 0) {
+    if (!customer?.couponCode || couponCode !== customer.couponCode.toUpperCase()) {
+      throw new Error("Enter the customer's valid redemption coupon code.");
+    }
+    const customerCoupon = await tx.digitalServiceCoupon.findUnique({
+      where: { code: customer.couponCode },
+    });
+    if (!customerCoupon?.referralOnly) {
+      throw new Error("This customer is not eligible for coupon redemption.");
+    }
+    if (customer.serviceCount + item.quantity <= customerCoupon.redemptionThreshold) {
+      throw new Error("Customer service count has not exceeded the redemption threshold.");
+    }
+    const gross = Number(quote.grossTotal);
+    const lineRatio = gross > 0 ? lineTotal / gross : 0;
+    const netCredit = Number(quote.netProfit) * lineRatio;
+    const creditSetting = await tx.digitalServiceAppSetting.findUnique({
+      where: { key: "customer_credit_pct" },
+    });
+    const creditPct = Math.max(0, Math.min(100, Number(creditSetting?.value ?? 5)));
+    const availableBalance = Number(customer.creditBalance) + netCredit * creditPct / 100;
+    if (redemptionAmount > availableBalance) {
+      throw new Error("Redemption amount exceeds the customer's eligible balance.");
+    }
+  }
+
+  const updatedItem = await tx.digitalServiceQuoteItem.updateMany({
+    where: { id: item.id, status: "pending" },
+    data: {
+      status: "completed",
+      completedAt: new Date(),
+      carryoverDate: null,
+      paymentChannels: channels,
+      cashAmount,
+      transferAmount,
+      redemptionAmount,
+    },
+  });
+  if (updatedItem.count !== 1) throw new Error("This service was already completed.");
+
+  const gross = Number(quote.grossTotal);
+  const lineRatio = gross > 0 ? lineTotal / gross : 0;
+  const netCredit = Number(quote.netProfit) * lineRatio;
+
+  if (customer) {
+    const creditSetting = await tx.digitalServiceAppSetting.findUnique({ where: { key: "customer_credit_pct" } });
+    const creditPct = Math.max(0, Math.min(100, Number(creditSetting?.value ?? 5)));
+    const earnedCredit = netCredit * creditPct / 100;
+    const updatedCustomer = await tx.digitalServiceCustomer.updateMany({
+      where: {
+        id: customer.id,
+        creditBalance: { gte: Math.max(0, redemptionAmount - earnedCredit) },
+      },
+      data: {
+        serviceCount: { increment: item.quantity },
+        serviceAmount: { increment: lineTotal },
+        creditBalance: { increment: earnedCredit - redemptionAmount },
+        redeemedAmount: { increment: redemptionAmount },
+      },
+    });
+    if (updatedCustomer.count !== 1) throw new Error("Customer credit balance changed; review the payment and try again.");
+  }
+
+  if (quote.couponId) {
+    const coupon = await tx.digitalServiceCoupon.findUnique({
+      where: { id: quote.couponId },
+      select: { code: true },
+    });
+    if (coupon) {
+      const couponOwner = await tx.digitalServiceCustomer.findUnique({
+        where: { couponCode: coupon.code },
+      });
+      const referralCommission = roundCurrency(Number(quote.commissionEarned) * lineRatio);
+      if (couponOwner && referralCommission > 0) {
+        await tx.digitalServiceCustomer.update({
+          where: { id: couponOwner.id },
+          data: {
+            referralCredit: { increment: referralCommission },
+            creditBalance: { increment: referralCommission },
+          },
+        });
+      }
+    }
+  }
+
+  await tx.digitalServiceFinanceEntry.create({
+    data: {
+      entryDate: new Date(),
+      type: "REVENUE",
+      category: "Completed digital service",
+      description: `Quote item ${item.id}`,
+      amount: cashAmount + transferAmount,
+      paymentMethod:
+        cashAmount > 0 && transferAmount > 0
+          ? "BOTH"
+          : transferAmount > 0
+            ? "TRANSFER"
+            : "CASH",
+      source: "system",
+    },
+  });
+
+  const remaining = await tx.digitalServiceQuoteItem.count({
+    where: { quoteId: quote.id, status: "pending" },
+  });
+  if (remaining === 0) {
+    await tx.digitalServiceQuote.update({
+      where: { id: quote.id },
+      data: { status: "COMPLETED" },
+    });
+    if (quote.couponId) {
+      await tx.digitalServiceCoupon.update({
+        where: { id: quote.couponId },
+        data: { usageCount: { increment: 1 } },
+      });
+      const coupon = await tx.digitalServiceCoupon.findUnique({
+        where: { id: quote.couponId },
+        include: { affiliate: true },
+      });
+      if (coupon?.affiliate) {
+        await tx.digitalServiceAffiliate.update({
+          where: { id: coupon.affiliate.id },
+          data: {
+            commissionScore: { increment: Number(quote.commissionEarned) },
+            customerDiscountTotal: { increment: Number(quote.customerDiscount) },
+          },
+        });
+      }
+    }
+  }
+}
+
+function revalidateSalesPaths() {
+  revalidatePath("/digital-service/sales-reports");
+  revalidatePath("/digital-service/sales");
+  revalidatePath("/digital-service/customers");
+  revalidatePath("/digital-service/coupons");
+  revalidatePath("/digital-service/finance");
+  revalidatePath("/digital-service");
 }
 
 export async function closeDigitalServiceDay(formData: FormData) {
@@ -105,189 +304,83 @@ export async function completeDigitalServiceItem(input: {
   couponCode: string;
 }) {
   await requireAdmin();
-  const { itemId } = input;
-  const cashAmount = input.cashAmount;
-  const transferAmount = input.transferAmount;
-  const redemptionAmount = input.redemptionAmount;
   if (!Array.isArray(input.channels)) throw new Error("Select at least one valid payment channel.");
-  const channels = [...new Set(input.channels)];
-  if (!itemId) throw new Error("Quote item is required.");
-  if (
-    !channels.length ||
-    channels.some((channel) => !["cash", "transfer", "coupon_redemption"].includes(channel))
-  ) {
-    throw new Error("Select at least one valid payment channel.");
+  const prisma = getPrismaClient();
+  await prisma.$transaction(async (tx) => {
+    await completeDigitalServiceItemInTransaction(tx, input);
+  });
+
+  revalidateSalesPaths();
+}
+
+export async function completeDigitalServiceItems(input: {
+  itemIds: string[];
+  cashAmount: number;
+  transferAmount: number;
+}) {
+  await requireAdmin();
+  const { itemIds, cashAmount, transferAmount } = input;
+  if (!Array.isArray(itemIds) || itemIds.length === 0 || itemIds.length > 50) {
+    throw new Error("Select between 1 and 50 pending services to pay together.");
   }
-  if (![cashAmount, transferAmount, redemptionAmount].every(
+  if (new Set(itemIds).size !== itemIds.length || itemIds.some((id) => typeof id !== "string" || !id)) {
+    throw new Error("The selected services are invalid.");
+  }
+  if (![cashAmount, transferAmount].every(
     (amount) => typeof amount === "number" && Number.isFinite(amount) && amount >= 0 &&
       Math.abs(amount * 100 - Math.round(amount * 100)) < 0.000001,
   )) {
-    throw new Error("Payment amounts must be valid non-negative amounts.");
-  }
-  if (channels.includes("cash") !== (cashAmount > 0)) {
-    throw new Error("Select cash only when a cash amount is entered.");
-  }
-  if (channels.includes("transfer") !== (transferAmount > 0)) {
-    throw new Error("Select transfer only when a transfer amount is entered.");
-  }
-  if (channels.includes("coupon_redemption") !== (redemptionAmount > 0)) {
-    throw new Error("Select coupon redemption only when a redemption amount is entered.");
+    throw new Error("Cash and transfer amounts must be valid non-negative amounts.");
   }
 
   const prisma = getPrismaClient();
   await prisma.$transaction(async (tx) => {
-    const item = await tx.digitalServiceQuoteItem.findUnique({
-      where: { id: itemId },
+    const items = await tx.digitalServiceQuoteItem.findMany({
+      where: { id: { in: itemIds } },
       include: { quote: { include: { customer: true } } },
     });
-    if (!item) throw new Error("Quote item not found.");
-    if (item.status === "completed") return;
-
-    const lineTotal = Number(item.lineTotal);
-    const toCents = (amount: number) => Math.round(amount * 100);
-    if (toCents(cashAmount) + toCents(transferAmount) + toCents(redemptionAmount) !== toCents(lineTotal)) {
-      throw new Error(`Payment must total ${lineTotal.toFixed(2)}.`);
+    if (items.length !== itemIds.length) {
+      throw new Error("One or more selected services could not be found.");
+    }
+    if (items.some((item) => item.status !== "pending")) {
+      throw new Error("All selected services must still be pending.");
+    }
+    const customerIds = new Set(items.map((item) => item.quote.customerId ?? "guest"));
+    if (customerIds.size !== 1) {
+      throw new Error("Group payments can only include services for the same customer.");
     }
 
-    const quote = item.quote;
-    const customer = quote.customer;
-    const couponCode = input.couponCode.trim().toUpperCase();
-    if (redemptionAmount > 0) {
-      if (!customer?.couponCode || couponCode !== customer.couponCode.toUpperCase()) {
-        throw new Error("Enter the customer's valid redemption coupon code.");
-      }
-      const customerCoupon = await tx.digitalServiceCoupon.findUnique({
-        where: { code: customer.couponCode },
-      });
-      if (!customerCoupon?.referralOnly) {
-        throw new Error("This customer is not eligible for coupon redemption.");
-      }
-      if (customer.serviceCount + item.quantity <= customerCoupon.redemptionThreshold) {
-        throw new Error("Customer service count has not exceeded the redemption threshold.");
-      }
-      const gross = Number(quote.grossTotal);
-      const lineRatio = gross > 0 ? lineTotal / gross : 0;
-      const netCredit = Number(quote.netProfit) * lineRatio;
-      const creditSetting = await tx.digitalServiceAppSetting.findUnique({
-        where: { key: "customer_credit_pct" },
-      });
-      const creditPct = Math.max(0, Math.min(100, Number(creditSetting?.value ?? 5)));
-      const availableBalance = Number(customer.creditBalance) + netCredit * creditPct / 100;
-      if (redemptionAmount > availableBalance) {
-        throw new Error("Redemption amount exceeds the customer's eligible balance.");
-      }
+    const itemCents = items.map((item) => Math.round(Number(item.lineTotal) * 100));
+    const totalCents = itemCents.reduce((sum, amount) => sum + amount, 0);
+    const cashCents = Math.round(cashAmount * 100);
+    const transferCents = Math.round(transferAmount * 100);
+    if (cashCents + transferCents !== totalCents) {
+      throw new Error(`Payment must total ${(totalCents / 100).toFixed(2)}.`);
     }
 
-    const updatedItem = await tx.digitalServiceQuoteItem.updateMany({
-      where: { id: item.id, status: "pending" },
-      data: {
-        status: "completed",
-        completedAt: new Date(),
-        carryoverDate: null,
-        paymentChannels: channels,
-        cashAmount,
-        transferAmount,
-        redemptionAmount,
-      },
-    });
-    if (updatedItem.count !== 1) throw new Error("This service was already completed.");
+    let allocatedCashCents = 0;
+    for (let index = 0; index < items.length; index += 1) {
+      const currentItemCents = itemCents[index];
+      const itemCashCents = index === items.length - 1
+        ? cashCents - allocatedCashCents
+        : Math.floor(cashCents * currentItemCents / totalCents);
+      allocatedCashCents += itemCashCents;
+      const itemTransferCents = currentItemCents - itemCashCents;
+      const itemChannels: CompletionInput["channels"] = [];
+      if (itemCashCents > 0) itemChannels.push("cash");
+      if (itemTransferCents > 0) itemChannels.push("transfer");
 
-    const gross = Number(quote.grossTotal);
-    const lineRatio = gross > 0 ? lineTotal / gross : 0;
-    const netCredit = Number(quote.netProfit) * lineRatio;
-
-    if (customer) {
-      const creditSetting = await tx.digitalServiceAppSetting.findUnique({ where: { key: "customer_credit_pct" } });
-      const creditPct = Math.max(0, Math.min(100, Number(creditSetting?.value ?? 5)));
-      const earnedCredit = netCredit * creditPct / 100;
-      const updatedCustomer = await tx.digitalServiceCustomer.updateMany({
-        where: {
-          id: customer.id,
-          creditBalance: { gte: Math.max(0, redemptionAmount - earnedCredit) },
-        },
-        data: {
-          serviceCount: { increment: item.quantity },
-          serviceAmount: { increment: lineTotal },
-          creditBalance: { increment: earnedCredit - redemptionAmount },
-          redeemedAmount: { increment: redemptionAmount },
-        },
+      await completeDigitalServiceItemInTransaction(tx, {
+        itemId: items[index].id,
+        channels: itemChannels,
+        cashAmount: itemCashCents / 100,
+        transferAmount: itemTransferCents / 100,
+        redemptionAmount: 0,
+        couponCode: "",
       });
-      if (updatedCustomer.count !== 1) throw new Error("Customer credit balance changed; review the payment and try again.");
-    }
-
-    if (quote.couponId) {
-      const coupon = await tx.digitalServiceCoupon.findUnique({
-        where: { id: quote.couponId },
-        select: { code: true },
-      });
-      if (coupon) {
-        const couponOwner = await tx.digitalServiceCustomer.findUnique({
-          where: { couponCode: coupon.code },
-        });
-        const referralCommission = roundCurrency(Number(quote.commissionEarned) * lineRatio);
-        if (couponOwner && referralCommission > 0) {
-          await tx.digitalServiceCustomer.update({
-            where: { id: couponOwner.id },
-            data: {
-              referralCredit: { increment: referralCommission },
-              creditBalance: { increment: referralCommission },
-            },
-          });
-        }
-      }
-    }
-
-    await tx.digitalServiceFinanceEntry.create({
-      data: {
-        entryDate: new Date(),
-        type: "REVENUE",
-        category: "Completed digital service",
-        description: `Quote item ${item.id}`,
-        amount: cashAmount + transferAmount,
-        paymentMethod:
-          cashAmount > 0 && transferAmount > 0
-            ? "BOTH"
-            : transferAmount > 0
-              ? "TRANSFER"
-              : "CASH",
-        source: "system",
-      },
-    });
-
-    const remaining = await tx.digitalServiceQuoteItem.count({
-      where: { quoteId: quote.id, status: "pending" },
-    });
-    if (remaining === 0) {
-      await tx.digitalServiceQuote.update({
-        where: { id: quote.id },
-        data: { status: "COMPLETED" },
-      });
-      if (quote.couponId) {
-        await tx.digitalServiceCoupon.update({
-          where: { id: quote.couponId },
-          data: { usageCount: { increment: 1 } },
-        });
-        const coupon = await tx.digitalServiceCoupon.findUnique({
-          where: { id: quote.couponId },
-          include: { affiliate: true },
-        });
-        if (coupon?.affiliate) {
-          await tx.digitalServiceAffiliate.update({
-            where: { id: coupon.affiliate.id },
-            data: {
-              commissionScore: { increment: Number(quote.commissionEarned) },
-              customerDiscountTotal: { increment: Number(quote.customerDiscount) },
-            },
-          });
-        }
-      }
     }
   });
 
-  revalidatePath("/digital-service/sales-reports");
-  revalidatePath("/digital-service/sales");
-  revalidatePath("/digital-service/customers");
-  revalidatePath("/digital-service/coupons");
-  revalidatePath("/digital-service/finance");
-  revalidatePath("/digital-service");
+  revalidateSalesPaths();
+  return { completedCount: itemIds.length };
 }

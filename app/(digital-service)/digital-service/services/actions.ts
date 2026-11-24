@@ -42,6 +42,7 @@ export async function createService(formData: FormData) {
     data: { categoryId, name, unit, price },
   });
   revalidatePath("/digital-service/services");
+  revalidatePath("/customer/performance/[token]", "page");
 }
 
 export async function updateService(formData: FormData) {
@@ -58,6 +59,7 @@ export async function updateService(formData: FormData) {
     data: { name, unit, price },
   });
   revalidatePath("/digital-service/services");
+  revalidatePath("/customer/performance/[token]", "page");
 }
 
 export async function deleteService(formData: FormData) {
@@ -66,4 +68,5 @@ export async function deleteService(formData: FormData) {
   if (!id) throw new Error("Service is required.");
   await getPrismaClient().digitalServiceService.delete({ where: { id } });
   revalidatePath("/digital-service/services");
+  revalidatePath("/customer/performance/[token]", "page");
 }
